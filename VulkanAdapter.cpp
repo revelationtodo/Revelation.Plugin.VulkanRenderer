@@ -47,6 +47,12 @@ void VulkanAdapter::Initialize()
         return;
     }
 
+    // init vulkan swapchain
+    if (!InitVulkanSwapchain())
+    {
+        return;
+    }
+
     // init vulkan shader
     if (!InitVulkanShader())
     {
@@ -96,7 +102,7 @@ void VulkanAdapter::Tick(double delta)
     }
 
     // update shader data
-    float aspect          = m_targetWindow->width() / m_targetWindow->height();
+    float aspect          = (float)m_targetWindow->width() / m_targetWindow->height();
     shaderData.projection = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 32.0f);
     shaderData.view       = glm::translate(glm::mat4(1), camPos1);
 
@@ -429,7 +435,7 @@ bool VulkanAdapter::InitVulkanSwapchain()
     // swapchain
     const VkFormat           imageFormat{VK_FORMAT_B8G8R8_SRGB};
     VkSwapchainCreateInfoKHR swapchainCI{
-        .sType           = VK_STRUCTURE_TYPE_IMAGE_SWAPCHAIN_CREATE_INFO_KHR,
+        .sType           = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
         .surface         = surface,
         .minImageCount   = surfaceCaps.minImageCount,
         .imageFormat     = imageFormat,
@@ -719,7 +725,7 @@ bool VulkanAdapter::InitVulkanPipeline()
             .format   = VK_FORMAT_R32G32_SFLOAT,
             .offset   = offsetof(Vertex, uv)}};
     VkPipelineVertexInputStateCreateInfo vertexInputStageCI{
-        .sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_DIVISOR_STATE_CREATE_INFO,
+        .sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
         .vertexBindingDescriptionCount   = 1,
         .pVertexBindingDescriptions      = &vertexBinding,
         .vertexAttributeDescriptionCount = (uint32_t)vertexAttributes.size(),
