@@ -1,35 +1,27 @@
 #pragma once
 #include <QWidget>
 
-//////////////////////////////////////////////////////////////////////////
-// rendering related headers
-#include <vulkan/vulkan.h>
-#define VOLK_IMPLEMENTATION
+#include <volk/volk.h>
+#include <vma/vk_mem_alloc.h>
+
 #include <array>
-#include <fstream>
-#include <iostream>
 #include <string>
 #include <vector>
-#include <volk/volk.h>
-#define VMA_IMPLEMENTATION
-#include <vma/vk_mem_alloc.h>
-#define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
-#include "slang/slang-com-ptr.h"
-#include "slang/slang.h"
+#include <iostream>
+
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
+
+#include "slang/slang-com-ptr.h"
+#include "slang/slang.h"
+
 #include <ktx.h>
 #include <ktxvulkan.h>
-#define TINYOBJLOADER_IMPLEMENTATION
-#include <tiny_obj_loader.h>
-//////////////////////////////////////////////////////////////////////////
 
-//////////////////////////////////////////////////////////////////////////
-// global variables
+#include <tiny_obj_loader.h>
+
 constexpr uint32_t maxFramesInFlight{2};
-//////////////////////////////////////////////////////////////////////////
 
 class VulkanAdapter
 {
@@ -113,6 +105,7 @@ class VulkanAdapter
     VkCommandPool            commandPool = VK_NULL_HANDLE;
     CommandBuffers           commandBuffers;
     VkDescriptorSetLayout    descriptorSetLayoutTex = VK_NULL_HANDLE;
-    VkPipelineLayout         pipelineLayout= VK_NULL_HANDLE;
+    VkPipelineLayout         pipelineLayout         = VK_NULL_HANDLE;
+    VkPipeline               pipeline               = VK_NULL_HANDLE;
     //////////////////////////////////////////////////////////////////////////
 };

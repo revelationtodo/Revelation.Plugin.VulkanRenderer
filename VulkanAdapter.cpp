@@ -2,6 +2,15 @@
 #include <QVulkanInstance>
 #include <QByteArrayList>
 
+#define VOLK_IMPLEMENTATION
+#include <volk/volk.h>
+
+#define VMA_IMPLEMENTATION
+#include <vma/vk_mem_alloc.h>
+
+#define TINYOBJLOADER_IMPLEMENTATION
+#include <tiny_obj_loader.h>
+
 VulkanAdapter::VulkanAdapter(QWidget* targetWindow)
     : m_targetWindow(targetWindow)
 {
@@ -103,7 +112,7 @@ bool VulkanAdapter::InitVulkanInstance()
     VkInstanceCreateInfo instCI{
         .sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pApplicationInfo        = &appInfo,
-        .enabledExtensionCount   = instExtensions.size(),
+        .enabledExtensionCount   = (uint32_t)instExtensions.size(),
         .ppEnabledExtensionNames = instExtensions.data()};
 
     if (!Check(vkCreateInstance(&instCI, nullptr, &instance)))
@@ -173,7 +182,7 @@ bool VulkanAdapter::InitVulkanQueue()
                     .pNext                   = &vk13Features,
                     .queueCreateInfoCount    = 1,
                     .pQueueCreateInfos       = &queueCI,
-                    .enabledExtensionCount   = deviceExts.size(),
+                    .enabledExtensionCount   = (uint32_t)deviceExts.size(),
                     .ppEnabledExtensionNames = deviceExts.data(),
                     .pEnabledFeatures        = &vk10Features};
     if (!Check(vkCreateDevice(physicalDevice, &deviceCI, nullptr, &device)))
@@ -236,8 +245,8 @@ bool VulkanAdapter::InitVulkanSwapchain()
         .minImageCount   = surfaceCaps.minImageCount,
         .imageFormat     = imageFormat,
         .imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,
-        .imageExtent{.width  = m_targetWindow->width(),
-                     .height = m_targetWindow->height()},
+        .imageExtent{.width  = (uint32_t)m_targetWindow->width(),
+                     .height = (uint32_t)m_targetWindow->height()},
         .imageArrayLayers = 1,
         .imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
         .preTransform     = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
@@ -275,8 +284,8 @@ bool VulkanAdapter::InitVulkanSwapchain()
         .sType     = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .imageType = VK_IMAGE_TYPE_2D,
         .format    = depthFormat,
-        .extent{.width  = m_targetWindow->width(),
-                .height = m_targetWindow->height(),
+        .extent{.width  = (uint32_t)m_targetWindow->width(),
+                .height = (uint32_t)m_targetWindow->height(),
                 .depth  = 1},
         .mipLevels     = 1,
         .arrayLayers   = 1,
@@ -484,7 +493,7 @@ bool VulkanAdapter::InitVulkanPipeline()
         .sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_DIVISOR_STATE_CREATE_INFO,
         .vertexBindingDescriptionCount   = 1,
         .pVertexBindingDescriptions      = &vertexBinding,
-        .vertexAttributeDescriptionCount = vertexAttributes.size(),
+        .vertexAttributeDescriptionCount = (uint32_t)vertexAttributes.size(),
         .pVertexAttributeDescriptions    = vertexAttributes.data()};
     VkPipelineInputAssemblyStateCreateInfo inputAssemblyStateCI{
         .sType    = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
@@ -494,7 +503,7 @@ bool VulkanAdapter::InitVulkanPipeline()
         VK_DYNAMIC_STATE_SCISSOR};
     VkPipelineDynamicStateCreateInfo dynamicStateCI{
         .sType             = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-        .dynamicStateCount = dynamicStates.size(),
+        .dynamicStateCount = (uint32_t)dynamicStates.size(),
         .pDynamicStates    = dynamicStates.data()};
     VkPipelineViewportStateCreateInfo viewportStateCI{
         .sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
