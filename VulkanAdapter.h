@@ -31,6 +31,9 @@ class VulkanAdapter
 
     void Initialize();
 
+    bool IsReady();
+    void Tick(double delta);
+
   private:
     bool Check(VkResult result);
     bool Check(bool result);
@@ -48,6 +51,7 @@ class VulkanAdapter
 
   private:
     QWidget* m_targetWindow = nullptr;
+    bool     m_ready        = false;
 
     //////////////////////////////////////////////////////////////////////////
     // Vulkan related
@@ -96,6 +100,7 @@ class VulkanAdapter
     VkImage                  depthImage           = VK_NULL_HANDLE;
     VmaAllocation            depthImageAllocation = VK_NULL_HANDLE;
     VkImageView              depthImageView       = VK_NULL_HANDLE;
+    ShaderData               shaderData;
     ShaderDataBuffers        shaderDataBuffers;
     VkShaderModule           shaderModule = VK_NULL_HANDLE;
     SlangGlobalSession       slangGlobalSession;
@@ -105,6 +110,8 @@ class VulkanAdapter
     VkCommandPool            commandPool = VK_NULL_HANDLE;
     CommandBuffers           commandBuffers;
     VkDescriptorSetLayout    descriptorSetLayoutTex = VK_NULL_HANDLE;
+    VkDescriptorPool         descriptorPool         = VK_NULL_HANDLE;
+    VkDescriptorSet          descriptorSetTex       = VK_NULL_HANDLE;
     VkPipelineLayout         pipelineLayout         = VK_NULL_HANDLE;
     VkPipeline               pipeline               = VK_NULL_HANDLE;
     //////////////////////////////////////////////////////////////////////////
