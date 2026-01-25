@@ -51,6 +51,7 @@ class VulkanAdapter
     bool InitVulkanShader();
     bool InitVulkanSyncObjects();
     bool InitVulkanCommandPools();
+    bool InitVulkanDescriptorSetLayout();
     bool InitVulkanPipeline();
 
   private:
@@ -72,6 +73,13 @@ class VulkanAdapter
         VkBuffer        buffer        = VK_NULL_HANDLE;
         VkDeviceAddress deviceAddress = {};
         void*           mapped        = nullptr;
+    };
+
+    struct Vertex
+    {
+        glm::vec3 pos;
+        glm::vec3 normal;
+        glm::vec2 uv;
     };
 
     using ShaderDataBuffers   = std::array<ShaderDataBuffer, maxFramesInFlight>;
@@ -98,11 +106,13 @@ class VulkanAdapter
     VkImageView              depthImageView       = VK_NULL_HANDLE;
     ShaderDataBuffers        shaderDataBuffers;
     VkShaderModule           shaderModule = VK_NULL_HANDLE;
+    SlangGlobalSession       slangGlobalSession;
     Fences                   fences;
     PresentSemaphores        presentSemaphores;
     RenderingSemaphores      renderSemaphores;
     VkCommandPool            commandPool = VK_NULL_HANDLE;
     CommandBuffers           commandBuffers;
-    SlangGlobalSession       slangGlobalSession;
+    VkDescriptorSetLayout    descriptorSetLayoutTex = VK_NULL_HANDLE;
+    VkPipelineLayout         pipelineLayout= VK_NULL_HANDLE;
     //////////////////////////////////////////////////////////////////////////
 };
