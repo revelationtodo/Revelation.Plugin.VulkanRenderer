@@ -295,18 +295,24 @@ bool VulkanAdapter::InitVulkanInstance()
         .pApplicationName = "Vulkan Renderer",
         .apiVersion       = VK_API_VERSION_1_3};
 
-    QVulkanInstance          probe;
-    QByteArrayList           qExts = probe.extensions();
-    std::vector<const char*> instExtensions;
-    instExtensions.reserve(qExts.size());
-    for (const QByteArray& e : qExts)
-    {
-        instExtensions.push_back(e.constData());
-    }
+    std::vector<const char*> instExtensions{"VK_KHR_surface"};
+#ifdef WIN32
+    instExtensions.push_back("VK_KHR_win32_surface");
+#endif
+
+#ifdef _DEBUG
+    const std::vector<const char*> instLayers = {"VK_LAYER_KHRONOS_validation"};
+#endif
 
     VkInstanceCreateInfo instCI{
-        .sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-        .pApplicationInfo        = &appInfo,
+        .sType            = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+        .pApplicationInfo = &appInfo,
+
+#ifdef _DEBUG
+        .enabledLayerCount   = (uint32_t)instLayers.size(),
+        .ppEnabledLayerNames = instLayers.data(),
+#endif
+
         .enabledExtensionCount   = (uint32_t)instExtensions.size(),
         .ppEnabledExtensionNames = instExtensions.data()};
 
