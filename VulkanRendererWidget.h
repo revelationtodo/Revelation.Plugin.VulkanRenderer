@@ -12,7 +12,7 @@ class VulkanRendererWidget : public QWindow
     Q_OBJECT
 
   public:
-    VulkanRendererWidget(IRevelationInterface* intf, QWidget* parent = nullptr);
+    VulkanRendererWidget(IRevelationInterface* intf);
     ~VulkanRendererWidget();
 
     void SetWrapper(QWidget* wrapper);

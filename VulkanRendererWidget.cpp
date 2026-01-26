@@ -1,7 +1,7 @@
 #include "VulkanRendererWidget.h"
 #include "VulkanAdapter.h"
 
-VulkanRendererWidget::VulkanRendererWidget(IRevelationInterface* intf, QWidget* parent /*= nullptr*/)
+VulkanRendererWidget::VulkanRendererWidget(IRevelationInterface* intf)
 {
     Initialize();
 }
