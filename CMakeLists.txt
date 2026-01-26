@@ -63,6 +63,10 @@ add_library(${PROJECT_NAME} SHARED
                VulkanAdapter.h
                VulkanRendererWidget.cpp
                VulkanRendererWidget.h
+
+               Parser/IParser.h
+               Parser/ParserManager.cpp
+               Parser/ParserManager.h
 )
 
 if(MSVC)
