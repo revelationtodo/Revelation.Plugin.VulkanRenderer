@@ -12,7 +12,7 @@ class VulkanRendererWidget : public QWindow
     Q_OBJECT
 
   public:
-    VulkanRendererWidget(IRevelationInterface* intf);
+    VulkanRendererWidget();
     ~VulkanRendererWidget();
 
     void SetWrapper(QWidget* wrapper);
@@ -42,4 +42,21 @@ class VulkanRendererWidget : public QWindow
     qint64        m_lastNs = 0;
 
     bool m_resized = false;
+};
+
+class VulkanRendererWidgetWrapper : public QWidget
+{
+    Q_OBJECT
+
+  public:
+    VulkanRendererWidgetWrapper(QWidget* parent = nullptr);
+    ~VulkanRendererWidgetWrapper();
+
+  private:
+    void Initialize();
+    void InitWidget();
+    void InitSignalSlots();
+
+  private:
+    VulkanRendererWidget* m_rendererWidget = nullptr;
 };

@@ -12,7 +12,7 @@ VulkanRendererInterface::VulkanRendererInterface(IRevelationInterface* intf)
 
 VulkanRendererInterface::~VulkanRendererInterface()
 {
-    delete m_rendererWidget;
+    delete m_rendererWidgetWrapper;
 }
 
 void VulkanRendererInterface::Initialize()
@@ -45,16 +45,8 @@ void VulkanRendererInterface::AddNavigationView()
     auto commonWidgetIntf = m_interface->GetCommonWidgetInterface();
     if (nullptr != commonWidgetIntf)
     {
-        m_rendererWidget   = new VulkanRendererWidget(m_interface);
-        QWidget* container = QWidget::createWindowContainer(m_rendererWidget, nullptr);
-        QWidget* wrapper   = new QWidget;
-        m_rendererWidget->SetWrapper(wrapper);
-        QGridLayout* layout = new QGridLayout(wrapper);
-        layout->setSpacing(0);
-        layout->setContentsMargins(8, 38, 8, 8);
-        layout->addWidget(container);
-
-        commonWidgetIntf->AddStackedWidget(wrapper, QObject::tr("VulkanRenderer"), FluAwesomeType::EyeGaze, Qt::AlignCenter);
+        m_rendererWidgetWrapper = new VulkanRendererWidgetWrapper();
+        commonWidgetIntf->AddStackedWidget(m_rendererWidgetWrapper, QObject::tr("VulkanRenderer"), FluAwesomeType::EyeGaze, Qt::AlignCenter);
     }
 }
 

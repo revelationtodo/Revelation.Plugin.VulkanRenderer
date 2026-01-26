@@ -29,9 +29,10 @@ class VulkanAdapter
 {
   public:
     VulkanAdapter(VulkanRendererWidget* targetWindow);
-    ~VulkanAdapter() = default;
+    ~VulkanAdapter();
 
     void Initialize();
+    void Uninitialize();
 
     bool IsReady();
     void Tick(double delta);

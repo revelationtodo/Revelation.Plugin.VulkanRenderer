@@ -1,7 +1,8 @@
 #include "VulkanRendererWidget.h"
 #include "VulkanAdapter.h"
+#include <QGridLayout>
 
-VulkanRendererWidget::VulkanRendererWidget(IRevelationInterface* intf)
+VulkanRendererWidget::VulkanRendererWidget()
 {
     Initialize();
 }
@@ -95,4 +96,36 @@ void VulkanRendererWidget::TriggerTick()
         deltaSeconds        = std::clamp(deltaSeconds, 0.0, 0.1);
         m_adapter->Tick(deltaSeconds);
     }
+}
+
+VulkanRendererWidgetWrapper::VulkanRendererWidgetWrapper(QWidget* parent /*= nullptr*/)
+    : QWidget(parent)
+{
+    Initialize();
+}
+
+VulkanRendererWidgetWrapper::~VulkanRendererWidgetWrapper()
+{
+    delete m_rendererWidget;
+}
+
+void VulkanRendererWidgetWrapper::Initialize()
+{
+    InitWidget();
+    InitSignalSlots();
+}
+
+void VulkanRendererWidgetWrapper::InitWidget()
+{
+    m_rendererWidget   = new VulkanRendererWidget;
+    QWidget* container = QWidget::createWindowContainer(m_rendererWidget, nullptr);
+    m_rendererWidget->SetWrapper(this);
+    QGridLayout* layout = new QGridLayout(this);
+    layout->setSpacing(0);
+    layout->setContentsMargins(8, 38, 8, 8);
+    layout->addWidget(container);
+}
+
+void VulkanRendererWidgetWrapper::InitSignalSlots()
+{
 }

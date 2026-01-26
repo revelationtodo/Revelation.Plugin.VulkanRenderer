@@ -17,6 +17,11 @@ VulkanAdapter::VulkanAdapter(VulkanRendererWidget* targetWindow)
 {
 }
 
+VulkanAdapter::~VulkanAdapter()
+{
+    Uninitialize();
+}
+
 void VulkanAdapter::Initialize()
 {
     // init vulkan library
@@ -80,6 +85,10 @@ void VulkanAdapter::Initialize()
     }
 
     m_ready = true;
+}
+
+void VulkanAdapter::Uninitialize()
+{
 }
 
 bool VulkanAdapter::IsReady()

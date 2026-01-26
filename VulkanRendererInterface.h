@@ -2,7 +2,7 @@
 #include "IExtensionInterface.h"
 #include "IRevelationInterface.h"
 
-class VulkanRendererWidget;
+class VulkanRendererWidgetWrapper;
 
 class VulkanRendererInterface : public IExtensionInterface
 {
@@ -22,5 +22,5 @@ class VulkanRendererInterface : public IExtensionInterface
   private:
     IRevelationInterface* m_interface = nullptr;
 
-    VulkanRendererWidget* m_rendererWidget = nullptr;
+    VulkanRendererWidgetWrapper* m_rendererWidgetWrapper = nullptr;
 };
