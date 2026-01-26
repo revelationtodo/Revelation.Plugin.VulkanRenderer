@@ -93,3 +93,36 @@ target_link_libraries(${PROJECT_NAME} PRIVATE FluControls)
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../Include)
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../FluentUI/FluControls)
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../FluentUI/FluUtils)
+
+
+if(CMAKE_CONFIGURATION_TYPES)
+    add_custom_target(ShaderResourceCopy
+        COMMAND ${CMAKE_COMMAND} -E remove_directory
+                ${REVELATION_OUTPUT_DIR}/$<CONFIG>/resources/shaders
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_CURRENT_SOURCE_DIR}/assets
+                ${REVELATION_OUTPUT_DIR}/$<CONFIG>/resources/shaders
+
+        COMMAND ${CMAKE_COMMAND} -E remove_directory 
+                ${PROJECT_BINARY_DIR}/../Revelation/resources/shaders
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_CURRENT_SOURCE_DIR}/assets
+                ${PROJECT_BINARY_DIR}/../Revelation/resources/shaders
+    )
+
+    message(${PROJECT_BINARY_DIR}/Revelation/resources/shaders)
+else()
+    add_custom_target(ShaderResourceCopy
+        COMMAND ${CMAKE_COMMAND} -E remove_directory
+                ${REVELATION_OUTPUT_DIR}/${CMAKE_BUILD_TYPE}/resources/shaders
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_CURRENT_SOURCE_DIR}/assets
+                ${REVELATION_OUTPUT_DIR}/${CMAKE_BUILD_TYPE}/resources/shaders
+
+        COMMAND ${CMAKE_COMMAND} -E remove_directory 
+                ${PROJECT_BINARY_DIR}/../Revelation/resources/shaders
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_CURRENT_SOURCE_DIR}/assets
+                ${PROJECT_BINARY_DIR}/../Revelation/resources/shaders
+    )
+endif()

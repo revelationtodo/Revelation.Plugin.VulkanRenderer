@@ -550,7 +550,7 @@ bool VulkanAdapter::InitVulkanShader()
     Slang::ComPtr<slang::ISession> slangSession;
     slangGlobalSession->createSession(slangSessionDesc, slangSession.writeRef());
 
-    Slang::ComPtr<slang::IModule> slangModule{slangSession->loadModuleFromSource("triangle", "assets/shader.slang", nullptr, nullptr)};
+    Slang::ComPtr<slang::IModule> slangModule{slangSession->loadModuleFromSource("triangle", "resources/shaders/shader.slang", nullptr, nullptr)};
     Slang::ComPtr<ISlangBlob>     spirv;
     slangModule->getTargetCode(0, spirv.writeRef());
 
