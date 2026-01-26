@@ -190,7 +190,7 @@ void VulkanAdapter::Tick(double delta)
         return;
     }
 
-    if (!Check(vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, presentSemaphores[frameIndex], VK_NULL_HANDLE, &imageIndex)))
+    if (!CheckSwapchain(vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, presentSemaphores[frameIndex], VK_NULL_HANDLE, &imageIndex)))
     {
         return;
     }
@@ -350,7 +350,7 @@ void VulkanAdapter::Tick(double delta)
                                  .pSwapchains        = &swapchain,
                                  .pImageIndices      = &imageIndex};
 
-    if (!Check(vkQueuePresentKHR(queue, &presentInfo)))
+    if (!CheckSwapchain(vkQueuePresentKHR(queue, &presentInfo)))
     {
         return;
     }
@@ -371,6 +371,19 @@ bool VulkanAdapter::Check(bool result)
     if (!result)
     {
         std::cerr << "Call returned an error\n";
+        return false;
+    }
+    return true;
+}
+
+bool VulkanAdapter::CheckSwapchain(VkResult result)
+{
+    if (result < VK_SUCCESS)
+    {
+        if (result == VK_ERROR_OUT_OF_DATE_KHR)
+        {
+            return true;
+        }
         return false;
     }
     return true;

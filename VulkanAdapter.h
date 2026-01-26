@@ -39,6 +39,7 @@ class VulkanAdapter
   private:
     bool Check(VkResult result);
     bool Check(bool result);
+    bool CheckSwapchain(VkResult result);
 
     bool InitVulkanInstance();
     bool InitVulkanDevice();
