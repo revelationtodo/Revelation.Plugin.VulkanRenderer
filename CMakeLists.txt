@@ -126,3 +126,5 @@ else()
                 ${PROJECT_BINARY_DIR}/../Revelation/resources/shaders
     )
 endif()
+
+set_property(TARGET ShaderResourceCopy PROPERTY FOLDER ResourceCopy)
