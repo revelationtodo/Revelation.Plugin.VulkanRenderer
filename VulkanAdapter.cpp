@@ -439,7 +439,7 @@ bool VulkanAdapter::InitVulkanSwapchain()
     }
 
     // swapchain
-    const VkFormat           imageFormat{VK_FORMAT_B8G8R8_SRGB};
+    const VkFormat           imageFormat{VK_FORMAT_B8G8R8A8_SRGB};
     VkSwapchainCreateInfoKHR swapchainCI{
         .sType           = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
         .surface         = surface,
@@ -462,6 +462,7 @@ bool VulkanAdapter::InitVulkanSwapchain()
     vkGetSwapchainImagesKHR(device, swapchain, &imageCount, nullptr);
     swapchainImages.resize(imageCount);
     vkGetSwapchainImagesKHR(device, swapchain, &imageCount, swapchainImages.data());
+    swapchainImageViews.resize(imageCount);
     for (int i = 0; i < imageCount; ++i)
     {
         VkImageViewCreateInfo viewCI{
@@ -672,14 +673,14 @@ bool VulkanAdapter::InitVulkanDescriptorSetLayout()
         return false;
     }
 
-    VkWriteDescriptorSet writeDescSet{
-        .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstSet          = descriptorSetTex,
-        .dstBinding      = 0,
-        .descriptorCount = 1024,
-        .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .pImageInfo      = nullptr};
-    vkUpdateDescriptorSets(device, 1, &writeDescSet, 0, nullptr);
+    // VkWriteDescriptorSet writeDescSet{
+    //     .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+    //     .dstSet          = descriptorSetTex,
+    //     .dstBinding      = 0,
+    //     .descriptorCount = 0,
+    //     .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+    //     .pImageInfo      = nullptr};
+    // vkUpdateDescriptorSets(device, 1, &writeDescSet, 0, nullptr);
 
     return true;
 }
@@ -755,7 +756,7 @@ bool VulkanAdapter::InitVulkanPipeline()
         .lineWidth = 1};
     VkPipelineMultisampleStateCreateInfo multisampleStateCI{
         .sType                = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-        .rasterizationSamples = VK_SAMPLE_COUNT_16_BIT};
+        .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT};
     VkPipelineDepthStencilStateCreateInfo depthStencilStateCI{
         .sType            = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
         .depthTestEnable  = VK_TRUE,
@@ -768,7 +769,7 @@ bool VulkanAdapter::InitVulkanPipeline()
         .attachmentCount = 1,
         .pAttachments    = &blendAttachment};
     const VkFormat                imageFormat{VK_FORMAT_B8G8R8A8_SRGB};
-    const VkFormat                depthFormat{VK_FORMAT_UNDEFINED};
+    const VkFormat                depthFormat{VK_FORMAT_D24_UNORM_S8_UINT};
     VkPipelineRenderingCreateInfo renderingCI{
         .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
         .colorAttachmentCount    = 1,
@@ -786,7 +787,8 @@ bool VulkanAdapter::InitVulkanPipeline()
         .pMultisampleState   = &multisampleStateCI,
         .pDepthStencilState  = &depthStencilStateCI,
         .pColorBlendState    = &colorBlendStateCI,
-        .pDynamicState       = &dynamicStateCI};
+        .pDynamicState       = &dynamicStateCI,
+        .layout              = pipelineLayout};
     if (!Check(vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &graphicsPipelineCI, nullptr, &pipeline)))
     {
         return false;
