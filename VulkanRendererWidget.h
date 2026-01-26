@@ -3,6 +3,8 @@
 #include <QWidget>
 #include <QTimer>
 #include <QElapsedTimer>
+#include <vector>
+#include <filesystem>
 
 class IRevelationInterface;
 class VulkanAdapter;
@@ -52,10 +54,19 @@ class VulkanRendererWidgetWrapper : public QWidget
     VulkanRendererWidgetWrapper(QWidget* parent = nullptr);
     ~VulkanRendererWidgetWrapper();
 
+  protected:
+    bool eventFilter(QObject* watched, QEvent* event);
+    void dragEnterEvent(QDragEnterEvent* event) override;
+    void dragMoveEvent(QDragMoveEvent* event) override;
+    void dropEvent(QDropEvent* event) override;
+
   private:
     void Initialize();
     void InitWidget();
     void InitSignalSlots();
+
+  signals:
+    void FileDropped(const std::vector<std::filesystem::path>& paths);
 
   private:
     VulkanRendererWidget* m_rendererWidget = nullptr;

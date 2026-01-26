@@ -1,6 +1,9 @@
 #include "VulkanRendererWidget.h"
 #include "VulkanAdapter.h"
 #include <QGridLayout>
+#include <QDragEnterEvent>
+#include <QMimeData>
+#include <QDir>
 
 VulkanRendererWidget::VulkanRendererWidget()
 {
@@ -109,6 +112,79 @@ VulkanRendererWidgetWrapper::~VulkanRendererWidgetWrapper()
     delete m_rendererWidget;
 }
 
+bool VulkanRendererWidgetWrapper::eventFilter(QObject* watched, QEvent* event)
+{
+    switch (event->type())
+    {
+        case QEvent::DragEnter:
+            dragEnterEvent(static_cast<QDragEnterEvent*>(event));
+            return true;
+        case QEvent::DragMove:
+            dragMoveEvent(static_cast<QDragMoveEvent*>(event));
+            return true;
+        case QEvent::Drop:
+            dropEvent(static_cast<QDropEvent*>(event));
+            return true;
+        default:
+            break;
+    }
+    return QWidget::eventFilter(watched, event);
+}
+
+void VulkanRendererWidgetWrapper::dragEnterEvent(QDragEnterEvent* event)
+{
+    const QMimeData* mime = event->mimeData();
+    if (nullptr != mime && mime->hasUrls())
+    {
+        event->acceptProposedAction();
+        return;
+    }
+    event->ignore();
+}
+
+void VulkanRendererWidgetWrapper::dragMoveEvent(QDragMoveEvent* event)
+{
+    const QMimeData* mime = event->mimeData();
+    if (nullptr != mime && mime->hasUrls())
+    {
+        event->acceptProposedAction();
+        return;
+    }
+    event->ignore();
+}
+
+void VulkanRendererWidgetWrapper::dropEvent(QDropEvent* event)
+{
+    const QMimeData* mime = event->mimeData();
+    if (nullptr == mime || !mime->hasUrls())
+    {
+        event->ignore();
+        return;
+    }
+
+    const QList<QUrl>                  urls = mime->urls();
+    std::vector<std::filesystem::path> paths;
+    paths.reserve(urls.size());
+    for (const QUrl& url : urls)
+    {
+        const QString path = url.toLocalFile();
+        if (!path.isEmpty())
+        {
+            paths.push_back(std::filesystem::u8path(path.toStdString()));
+        }
+    }
+
+    if (!paths.empty())
+    {
+        emit FileDropped(paths);
+
+        event->acceptProposedAction();
+        return;
+    }
+
+    event->ignore();
+}
+
 void VulkanRendererWidgetWrapper::Initialize()
 {
     InitWidget();
@@ -119,11 +195,16 @@ void VulkanRendererWidgetWrapper::InitWidget()
 {
     m_rendererWidget   = new VulkanRendererWidget;
     QWidget* container = QWidget::createWindowContainer(m_rendererWidget, nullptr);
+    container->setAcceptDrops(true);
+    container->installEventFilter(this);
+
     m_rendererWidget->SetWrapper(this);
     QGridLayout* layout = new QGridLayout(this);
     layout->setSpacing(0);
     layout->setContentsMargins(8, 38, 8, 8);
     layout->addWidget(container);
+
+    setAcceptDrops(true);
 }
 
 void VulkanRendererWidgetWrapper::InitSignalSlots()
