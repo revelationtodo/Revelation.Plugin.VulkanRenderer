@@ -1,6 +1,5 @@
 #include "VulkanAdapter.h"
-#include <QVulkanInstance>
-#include <QByteArrayList>
+#include "VulkanRendererWidget.h"
 
 #define VOLK_IMPLEMENTATION
 #include <volk/volk.h>
@@ -13,7 +12,7 @@
 
 glm::vec3 camPos1{0.0f, 0.0f, -6.0f};
 
-VulkanAdapter::VulkanAdapter(QWidget* targetWindow)
+VulkanAdapter::VulkanAdapter(VulkanRendererWidget* targetWindow)
     : m_targetWindow(targetWindow)
 {
 }
@@ -90,6 +89,101 @@ bool VulkanAdapter::IsReady()
 
 void VulkanAdapter::Tick(double delta)
 {
+    // update
+    if (m_targetWindow->IsResized())
+    {
+        vkDeviceWaitIdle(device);
+
+        // recreate swapchain
+        VkSurfaceCapabilitiesKHR surfaceCaps{};
+        if (!Check(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfaceCaps)))
+        {
+            return;
+        }
+        const VkFormat           imageFormat{VK_FORMAT_B8G8R8A8_SRGB};
+        VkSwapchainCreateInfoKHR swapchainCI{
+            .sType           = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+            .surface         = surface,
+            .minImageCount   = surfaceCaps.minImageCount,
+            .imageFormat     = imageFormat,
+            .imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,
+            .imageExtent{.width  = m_targetWindow->GetWidthPix(),
+                         .height = m_targetWindow->GetHeightPix()},
+            .imageArrayLayers = 1,
+            .imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+            .preTransform     = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+            .compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+            .presentMode      = VK_PRESENT_MODE_FIFO_KHR,
+            .oldSwapchain     = swapchain};
+        if (!Check(vkCreateSwapchainKHR(device, &swapchainCI, nullptr, &swapchain)))
+        {
+            return;
+        }
+
+        // recreate swapchain image views
+        for (auto i = 0; i < swapchainImageViews.size(); i++)
+        {
+            vkDestroyImageView(device, swapchainImageViews[i], nullptr);
+        }
+        uint32_t imageCount = 0;
+        vkGetSwapchainImagesKHR(device, swapchain, &imageCount, nullptr);
+        swapchainImages.resize(imageCount);
+        vkGetSwapchainImagesKHR(device, swapchain, &imageCount, swapchainImages.data());
+        swapchainImageViews.resize(imageCount);
+        for (int i = 0; i < imageCount; ++i)
+        {
+            VkImageViewCreateInfo viewCI{
+                .sType    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                .image    = swapchainImages[i],
+                .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                .format   = imageFormat,
+                .subresourceRange{
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .levelCount = 1,
+                    .layerCount = 1}};
+            if (!Check(vkCreateImageView(device, &viewCI, nullptr, &swapchainImageViews[i])))
+            {
+                return;
+            }
+        }
+
+        // recreate depth attachment
+        vkDestroySwapchainKHR(device, swapchainCI.oldSwapchain, nullptr);
+        vmaDestroyImage(allocator, depthImage, depthImageAllocation);
+        vkDestroyImageView(device, depthImageView, nullptr);
+        const VkFormat    depthFormat{VK_FORMAT_D24_UNORM_S8_UINT};
+        VkImageCreateInfo depthImageCI{
+            .sType     = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .imageType = VK_IMAGE_TYPE_2D,
+            .format    = depthFormat,
+            .extent{.width  = m_targetWindow->GetWidthPix(),
+                    .height = m_targetWindow->GetHeightPix(),
+                    .depth  = 1},
+            .mipLevels     = 1,
+            .arrayLayers   = 1,
+            .samples       = VK_SAMPLE_COUNT_1_BIT,
+            .tiling        = VK_IMAGE_TILING_OPTIMAL,
+            .usage         = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+            .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED};
+        VmaAllocationCreateInfo allocCI{
+            .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
+            .usage = VMA_MEMORY_USAGE_AUTO};
+        vmaCreateImage(allocator, &depthImageCI, &allocCI, &depthImage, &depthImageAllocation, nullptr);
+        VkImageViewCreateInfo depthViewCI{
+            .sType    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image    = depthImage,
+            .viewType = VK_IMAGE_VIEW_TYPE_2D,
+            .format   = depthFormat,
+            .subresourceRange{
+                .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+                .levelCount = 1,
+                .layerCount = 1}};
+        if (!Check(vkCreateImageView(device, &depthViewCI, nullptr, &depthImageView)))
+        {
+            return;
+        }
+    }
+
     if (!Check(vkWaitForFences(device, 1, &fences[frameIndex], true, UINT64_MAX)) ||
         !Check(vkResetFences(device, 1, &fences[frameIndex])))
     {
@@ -163,7 +257,7 @@ void VulkanAdapter::Tick(double delta)
         .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
         .loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
-        .clearValue{.color{0.0f, 0.0f, 0.0f, 1.0f}}};
+        .clearValue{.color{1.0f, 0.0f, 0.0f, 1.0f}}};
     VkRenderingAttachmentInfo depthAttachmentInfo{
         .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .imageView   = depthImageView,
@@ -174,22 +268,23 @@ void VulkanAdapter::Tick(double delta)
     VkRenderingInfo renderingInfo{
         .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
         .renderArea{
-            .extent{.width = (uint32_t)m_targetWindow->width(), .height = (uint32_t)m_targetWindow->height()}},
+            .extent{.width  = m_targetWindow->GetWidthPix(),
+                    .height = m_targetWindow->GetHeightPix()}},
         .layerCount           = 1,
         .colorAttachmentCount = 1,
         .pColorAttachments    = &colorAttachmentInfo,
         .pDepthAttachment     = &depthAttachmentInfo};
     vkCmdBeginRendering(commandBuffer, &renderingInfo);
 
-    VkViewport viewport{.width    = static_cast<float>(m_targetWindow->width()),
-                        .height   = static_cast<float>(m_targetWindow->height()),
+    VkViewport viewport{.width    = static_cast<float>(m_targetWindow->GetWidthPix()),
+                        .height   = static_cast<float>(m_targetWindow->GetHeightPix()),
                         .minDepth = 0.0f,
                         .maxDepth = 1.0f};
     vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
     VkRect2D scissor{
-        .extent{.width  = (uint32_t)m_targetWindow->width(),
-                .height = (uint32_t)m_targetWindow->height()}};
+        .extent{.width  = m_targetWindow->GetWidthPix(),
+                .height = m_targetWindow->GetHeightPix()}};
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
@@ -205,7 +300,7 @@ void VulkanAdapter::Tick(double delta)
                        0,
                        sizeof(VkDeviceAddress),
                        &shaderDataBuffers[frameIndex].deviceAddress);
-    vkCmdDrawIndexed(commandBuffer, 0, 1, 0, 0, 0);
+    // vkCmdDrawIndexed(commandBuffer, 0, 1, 0, 0, 0);
     vkCmdEndRendering(commandBuffer);
 
     VkImageMemoryBarrier2 barrierPresent{
@@ -250,21 +345,14 @@ void VulkanAdapter::Tick(double delta)
     frameIndex = (frameIndex + 1) % maxFramesInFlight;
     VkPresentInfoKHR presentInfo{.sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
                                  .waitSemaphoreCount = 1,
-                                 .pWaitSemaphores =
-                                     &renderSemaphores[imageIndex],
-                                 .swapchainCount = 1,
-                                 .pSwapchains    = &swapchain,
-                                 .pImageIndices  = &imageIndex};
+                                 .pWaitSemaphores    = &renderSemaphores[imageIndex],
+                                 .swapchainCount     = 1,
+                                 .pSwapchains        = &swapchain,
+                                 .pImageIndices      = &imageIndex};
 
-    VkResult result = vkQueuePresentKHR(queue, &presentInfo);
-    if (result < VK_SUCCESS)
+    if (!Check(vkQueuePresentKHR(queue, &presentInfo)))
     {
-        if (result == VK_ERROR_OUT_OF_DATE_KHR)
-        {
-            // updateSwapchain = true;
-            return;
-        }
-        std::cerr << "Vulkan call returned an error (" << result << ")\n";
+        return;
     }
 }
 
@@ -446,8 +534,8 @@ bool VulkanAdapter::InitVulkanSwapchain()
         .minImageCount   = surfaceCaps.minImageCount,
         .imageFormat     = imageFormat,
         .imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,
-        .imageExtent{.width  = (uint32_t)m_targetWindow->width(),
-                     .height = (uint32_t)m_targetWindow->height()},
+        .imageExtent{.width  = m_targetWindow->GetWidthPix(),
+                     .height = m_targetWindow->GetHeightPix()},
         .imageArrayLayers = 1,
         .imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
         .preTransform     = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
@@ -486,8 +574,8 @@ bool VulkanAdapter::InitVulkanSwapchain()
         .sType     = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .imageType = VK_IMAGE_TYPE_2D,
         .format    = depthFormat,
-        .extent{.width  = (uint32_t)m_targetWindow->width(),
-                .height = (uint32_t)m_targetWindow->height(),
+        .extent{.width  = m_targetWindow->GetWidthPix(),
+                .height = m_targetWindow->GetHeightPix(),
                 .depth  = 1},
         .mipLevels     = 1,
         .arrayLayers   = 1,
@@ -598,6 +686,7 @@ bool VulkanAdapter::InitVulkanSyncObjects()
             return false;
         }
     }
+    return true;
 }
 
 bool VulkanAdapter::InitVulkanCommandPools()

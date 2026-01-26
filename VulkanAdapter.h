@@ -21,12 +21,14 @@
 
 #include <tiny_obj_loader.h>
 
+class VulkanRendererWidget;
+
 constexpr uint32_t maxFramesInFlight{2};
 
 class VulkanAdapter
 {
   public:
-    VulkanAdapter(QWidget* targetWindow);
+    VulkanAdapter(VulkanRendererWidget* targetWindow);
     ~VulkanAdapter() = default;
 
     void Initialize();
@@ -50,8 +52,9 @@ class VulkanAdapter
     bool InitVulkanPipeline();
 
   private:
-    QWidget* m_targetWindow = nullptr;
-    bool     m_ready        = false;
+    VulkanRendererWidget* m_targetWindow = nullptr;
+
+    bool m_ready = false;
 
     //////////////////////////////////////////////////////////////////////////
     // Vulkan related

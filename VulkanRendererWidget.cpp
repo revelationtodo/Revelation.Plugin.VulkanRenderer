@@ -2,13 +2,58 @@
 #include "VulkanAdapter.h"
 
 VulkanRendererWidget::VulkanRendererWidget(IRevelationInterface* intf, QWidget* parent /*= nullptr*/)
-    : QWidget(parent)
 {
     Initialize();
 }
 
 VulkanRendererWidget::~VulkanRendererWidget()
 {
+}
+
+void VulkanRendererWidget::SetWrapper(QWidget* wrapper)
+{
+    m_wrapper = wrapper;
+}
+
+uint32_t VulkanRendererWidget::GetWidthPix()
+{
+    if (nullptr == m_wrapper)
+    {
+        QSize logical = size();
+        qreal dpr     = devicePixelRatio();
+        return uint32_t(logical.width() * dpr);
+    }
+
+    QSize logical = m_wrapper->size();
+    qreal dpr     = m_wrapper->devicePixelRatioF();
+    return uint32_t(logical.width() * dpr);
+}
+
+uint32_t VulkanRendererWidget::GetHeightPix()
+{
+    if (nullptr == m_wrapper)
+    {
+        QSize logical = size();
+        qreal dpr     = devicePixelRatio();
+        return uint32_t(logical.height() * dpr);
+    }
+
+    QSize logical = m_wrapper->size();
+    qreal dpr     = m_wrapper->devicePixelRatio();
+    return uint32_t(logical.height() * dpr);
+}
+
+bool VulkanRendererWidget::IsResized()
+{
+    bool resized = m_resized;
+    m_resized    = false;
+    return resized;
+}
+
+void VulkanRendererWidget::resizeEvent(QResizeEvent* event)
+{
+    m_resized = true;
+    return QWindow::resizeEvent(event);
 }
 
 void VulkanRendererWidget::Initialize()
@@ -32,7 +77,6 @@ void VulkanRendererWidget::Initialize()
 
 void VulkanRendererWidget::InitWidget()
 {
-    setMouseTracking(true);
 }
 
 void VulkanRendererWidget::InitSignalSlots()
