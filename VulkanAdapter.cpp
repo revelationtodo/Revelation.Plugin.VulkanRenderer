@@ -527,9 +527,9 @@ bool VulkanAdapter::InitVulkanInstance()
 
 bool VulkanAdapter::InitVulkanDevice()
 {
-    const uint32_t deviceIndex = 0;
-    uint32_t       deviceCount = 0;
-    if (!Check(vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr)))
+    uint32_t deviceCount = 0;
+    if (!Check(vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr)) ||
+        deviceCount == 0)
     {
         return false;
     }
@@ -539,8 +539,20 @@ bool VulkanAdapter::InitVulkanDevice()
     {
         return false;
     }
-    physicalDevice = devices[deviceIndex];
 
+    for (VkPhysicalDevice device : devices)
+    {
+        VkPhysicalDeviceProperties props{};
+        vkGetPhysicalDeviceProperties(device, &props);
+
+        if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+        {
+            physicalDevice = device;
+            return true;
+        }
+    }
+
+    physicalDevice = devices[0];
     return true;
 }
 
