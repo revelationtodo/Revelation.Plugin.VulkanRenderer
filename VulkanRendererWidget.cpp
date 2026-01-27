@@ -54,6 +54,18 @@ bool VulkanRendererWidget::IsResized()
     return resized;
 }
 
+void VulkanRendererWidget::LoadModel(const std::string& filePath)
+{
+    std::thread loadThread([this, filePath]() {
+        Model model;
+        if (m_parserManager->Parse(filePath, model))
+        {
+            m_adapter->LoadModel(model);
+        }
+    });
+    loadThread.detach();
+}
+
 void VulkanRendererWidget::resizeEvent(QResizeEvent* event)
 {
     m_resized = true;
@@ -64,6 +76,8 @@ void VulkanRendererWidget::Initialize()
 {
     InitWidget();
     InitSignalSlots();
+
+    m_parserManager = std::make_unique<ParserManager>();
 
     m_adapter = new VulkanAdapter(this);
     m_adapter->Initialize();
@@ -162,22 +176,21 @@ void VulkanRendererWidgetWrapper::dropEvent(QDropEvent* event)
         return;
     }
 
-    const QList<QUrl>                  urls = mime->urls();
-    std::vector<std::filesystem::path> paths;
+    const QList<QUrl>        urls = mime->urls();
+    std::vector<std::string> paths;
     paths.reserve(urls.size());
     for (const QUrl& url : urls)
     {
         const QString path = url.toLocalFile();
         if (!path.isEmpty())
         {
-            paths.push_back(std::filesystem::u8path(path.toStdString()));
+            paths.push_back(path.toStdString());
         }
     }
 
     if (!paths.empty())
     {
-        emit FileDropped(paths);
-
+        m_rendererWidget->LoadModel(paths[0]);
         event->acceptProposedAction();
         return;
     }

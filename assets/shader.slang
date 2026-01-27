@@ -15,7 +15,7 @@ Sampler2D textures[];
 struct ShaderData {
     float4x4 projection;
     float4x4 view;
-    float4x4 model[3];
+    float4x4 model;
     float4 lightPos;
     uint32_t selected;
 };
@@ -33,11 +33,11 @@ struct VSOutput {
 [shader("vertex")]
 VSOutput main(VSInput input, uniform ShaderData *shaderData, uint instanceIndex : SV_VulkanInstanceID) {
     VSOutput output;
-    float4x4 modelMat = shaderData->model[instanceIndex];
+    float4x4 modelMat = shaderData->model;
     output.Normal = mul((float3x3)mul(shaderData->view, modelMat), input.Normal);
     output.UV = input.UV;
     output.Pos = mul(shaderData->projection, mul(shaderData->view, mul(modelMat, float4(input.Pos.xyz, 1.0))));
-    output.Factor = (shaderData->selected == instanceIndex ? 3.0f : 1.0f);
+    output.Factor = 1;
     output.InstanceIndex = instanceIndex;
     // Calculate view vectors required for lighting
     float4 fragPos = mul(mul(shaderData->view, modelMat), float4(input.Pos.xyz, 1.0));
@@ -56,6 +56,6 @@ float4 main(VSOutput input) {
     float3 diffuse = max(dot(N, L), 0.0025);
     float3 specular = pow(max(dot(R, V), 0.0), 16.0) * 0.75;
     // Sample from texture
-    float3 color = textures[input.InstanceIndex].Sample(input.UV).rgb * input.Factor;
-    return float4(diffuse * color.rgb + specular, 1.0);
+    // float3 color = textures[input.InstanceIndex].Sample(input.UV).rgb * input.Factor;
+    return float4(diffuse + specular, 1.0);
 }

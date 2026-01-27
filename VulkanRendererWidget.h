@@ -5,6 +5,7 @@
 #include <QElapsedTimer>
 #include <vector>
 #include <filesystem>
+#include "Parser/ParserManager.h"
 
 class IRevelationInterface;
 class VulkanAdapter;
@@ -22,6 +23,8 @@ class VulkanRendererWidget : public QWindow
     uint32_t GetWidthPix();
     uint32_t GetHeightPix();
     bool     IsResized();
+
+    void LoadModel(const std::string& filePath);
 
   protected:
     void resizeEvent(QResizeEvent* event) override;
@@ -44,6 +47,8 @@ class VulkanRendererWidget : public QWindow
     qint64        m_lastNs = 0;
 
     bool m_resized = false;
+
+    std::unique_ptr<ParserManager> m_parserManager;
 };
 
 class VulkanRendererWidgetWrapper : public QWidget
@@ -64,9 +69,6 @@ class VulkanRendererWidgetWrapper : public QWidget
     void Initialize();
     void InitWidget();
     void InitSignalSlots();
-
-  signals:
-    void FileDropped(const std::vector<std::filesystem::path>& paths);
 
   private:
     VulkanRendererWidget* m_rendererWidget = nullptr;

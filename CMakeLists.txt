@@ -67,6 +67,8 @@ add_library(${PROJECT_NAME} SHARED
                Parser/IParser.h
                Parser/ParserManager.cpp
                Parser/ParserManager.h
+               Parser/WavefrontObjParser.cpp
+               Parser/WavefrontObjParser.h
 )
 
 if(MSVC)

@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 #include <iostream>
+#include <mutex>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -19,7 +20,7 @@
 #include <ktx.h>
 #include <ktxvulkan.h>
 
-#include <tiny_obj_loader.h>
+#include "Parser/IParser.h"
 
 class VulkanRendererWidget;
 
@@ -36,6 +37,8 @@ class VulkanAdapter
 
     bool IsReady();
     void Tick(double delta);
+
+    void LoadModel(const Model& model);
 
   private:
     bool Check(VkResult result);
@@ -90,6 +93,17 @@ class VulkanAdapter
     using CommandBuffers      = std::array<VkCommandBuffer, maxFramesInFlight>;
     using SlangGlobalSession  = Slang::ComPtr<slang::IGlobalSession>;
 
+    struct BufferDesc
+    {
+        VkBuffer      buffer     = VK_NULL_HANDLE;
+        VmaAllocation allocation = VK_NULL_HANDLE;
+
+        VkDeviceSize offsetOfIndexBuffer = 0;
+        uint16_t     indexCount          = 0;
+    };
+
+    std::mutex renderLock;
+
     uint32_t                 imageIndex       = 0;
     uint32_t                 frameIndex       = 0;
     VkInstance               instance         = VK_NULL_HANDLE;
@@ -119,5 +133,7 @@ class VulkanAdapter
     VkDescriptorSet          descriptorSetTex       = VK_NULL_HANDLE;
     VkPipelineLayout         pipelineLayout         = VK_NULL_HANDLE;
     VkPipeline               pipeline               = VK_NULL_HANDLE;
+
+    std::vector<BufferDesc> modelBuffers;
     //////////////////////////////////////////////////////////////////////////
 };

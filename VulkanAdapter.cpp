@@ -7,9 +7,6 @@
 #define VMA_IMPLEMENTATION
 #include <vma/vk_mem_alloc.h>
 
-#define TINYOBJLOADER_IMPLEMENTATION
-#include <tiny_obj_loader.h>
-
 glm::vec3 camPos1{0.0f, 0.0f, -6.0f};
 
 VulkanAdapter::VulkanAdapter(VulkanRendererWidget* targetWindow)
@@ -98,6 +95,8 @@ bool VulkanAdapter::IsReady()
 
 void VulkanAdapter::Tick(double delta)
 {
+    std::lock_guard<std::mutex> guard(renderLock);
+
     // update
     if (m_targetWindow->IsResized())
     {
@@ -209,6 +208,10 @@ void VulkanAdapter::Tick(double delta)
     shaderData.projection = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 32.0f);
     shaderData.view       = glm::translate(glm::mat4(1), camPos1);
 
+    // test
+    auto instancePos = glm::vec3(0.0f, 0.0f, 0.0f);
+    shaderData.model = glm::translate(glm::mat4(1.0f), instancePos);
+
     memcpy(shaderDataBuffers[frameIndex].mapped, &shaderData, sizeof(ShaderData));
 
     // command buffers
@@ -266,7 +269,7 @@ void VulkanAdapter::Tick(double delta)
         .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
         .loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
-        .clearValue{.color{1.0f, 0.0f, 0.0f, 1.0f}}};
+        .clearValue{.color{0.0f, 0.0f, 0.0f, 1.0f}}};
     VkRenderingAttachmentInfo depthAttachmentInfo{
         .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .imageView   = depthImageView,
@@ -300,16 +303,20 @@ void VulkanAdapter::Tick(double delta)
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
                             0, 1, &descriptorSetTex, 0, nullptr);
 
-    VkDeviceSize vOffset{0};
-    // vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vBuffer, &vOffset);
-    // vkCmdBindIndexBuffer(commandBuffer, vBuffer, vBufSize, VK_INDEX_TYPE_UINT16);
-    vkCmdPushConstants(commandBuffer,
-                       pipelineLayout,
-                       VK_SHADER_STAGE_VERTEX_BIT,
-                       0,
-                       sizeof(VkDeviceAddress),
-                       &shaderDataBuffers[frameIndex].deviceAddress);
-    // vkCmdDrawIndexed(commandBuffer, 0, 1, 0, 0, 0);
+    for (const BufferDesc& bufferDesc : modelBuffers)
+    {
+        VkDeviceSize vOffset = 0;
+        vkCmdBindVertexBuffers(commandBuffer, 0, 1, &bufferDesc.buffer, &vOffset);
+        vkCmdBindIndexBuffer(commandBuffer, bufferDesc.buffer, bufferDesc.offsetOfIndexBuffer, VK_INDEX_TYPE_UINT16);
+        vkCmdPushConstants(commandBuffer,
+                           pipelineLayout,
+                           VK_SHADER_STAGE_VERTEX_BIT,
+                           0,
+                           sizeof(VkDeviceAddress),
+                           &shaderDataBuffers[frameIndex].deviceAddress);
+        vkCmdDrawIndexed(commandBuffer, bufferDesc.indexCount, 1, 0, 0, 0);
+    }
+
     vkCmdEndRendering(commandBuffer);
 
     VkImageMemoryBarrier2 barrierPresent{
@@ -334,17 +341,16 @@ void VulkanAdapter::Tick(double delta)
         return;
     }
 
-    VkPipelineStageFlags waitStages =
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    VkSubmitInfo submitInfo{
-        .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .waitSemaphoreCount   = 1,
-        .pWaitSemaphores      = &presentSemaphores[frameIndex],
-        .pWaitDstStageMask    = &waitStages,
-        .commandBufferCount   = 1,
-        .pCommandBuffers      = &commandBuffer,
-        .signalSemaphoreCount = 1,
-        .pSignalSemaphores    = &renderSemaphores[imageIndex],
+    VkPipelineStageFlags waitStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    VkSubmitInfo         submitInfo{
+                .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                .waitSemaphoreCount   = 1,
+                .pWaitSemaphores      = &presentSemaphores[frameIndex],
+                .pWaitDstStageMask    = &waitStages,
+                .commandBufferCount   = 1,
+                .pCommandBuffers      = &commandBuffer,
+                .signalSemaphoreCount = 1,
+                .pSignalSemaphores    = &renderSemaphores[imageIndex],
     };
     if (!Check(vkQueueSubmit(queue, 1, &submitInfo, fences[frameIndex])))
     {
@@ -362,6 +368,53 @@ void VulkanAdapter::Tick(double delta)
     if (!CheckSwapchain(vkQueuePresentKHR(queue, &presentInfo)))
     {
         return;
+    }
+}
+
+void VulkanAdapter::LoadModel(const Model& model)
+{
+    vkDeviceWaitIdle(device);
+
+    std::lock_guard<std::mutex> guard(renderLock);
+
+    std::vector<BufferDesc> newModelBuffers;
+    for (const Shape& shape : model.shapes)
+    {
+
+        VkDeviceSize       vbSize = sizeof(Vertex) * shape.vertices.size();
+        VkDeviceSize       ibSize = sizeof(uint16_t) * shape.indices.size();
+        VkBufferCreateInfo bufferCI{
+            .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .size  = vbSize + ibSize,
+            .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+                     VK_BUFFER_USAGE_INDEX_BUFFER_BIT};
+        VmaAllocationCreateInfo bufferAllocCI{
+            .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                     VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT |
+                     VMA_ALLOCATION_CREATE_MAPPED_BIT,
+            .usage = VMA_MEMORY_USAGE_AUTO};
+
+        BufferDesc bufferDesc;
+        if (Check(vmaCreateBuffer(allocator, &bufferCI, &bufferAllocCI, &bufferDesc.buffer, &bufferDesc.allocation, nullptr)))
+        {
+            bufferDesc.offsetOfIndexBuffer = vbSize;
+            bufferDesc.indexCount          = shape.indices.size();
+
+            void* mapped = nullptr;
+            vmaMapMemory(allocator, bufferDesc.allocation, &mapped);
+            memcpy(mapped, shape.vertices.data(), vbSize);
+            memcpy(((char*)mapped) + vbSize, shape.indices.data(), ibSize);
+            vmaUnmapMemory(allocator, bufferDesc.allocation);
+
+            newModelBuffers.emplace_back(std::move(bufferDesc));
+        }
+    }
+
+    std::swap(modelBuffers, newModelBuffers);
+
+    for (const BufferDesc& bufferDesc : newModelBuffers)
+    {
+        vmaDestroyBuffer(allocator, bufferDesc.buffer, bufferDesc.allocation);
     }
 }
 
