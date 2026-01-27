@@ -86,6 +86,43 @@ void VulkanAdapter::Initialize()
 
 void VulkanAdapter::Uninitialize()
 {
+    vkDeviceWaitIdle(device);
+
+    for (auto i = 0; i < maxFramesInFlight; i++)
+    {
+        vkDestroyFence(device, fences[i], nullptr);
+        vkDestroySemaphore(device, presentSemaphores[i], nullptr);
+        vkDestroySemaphore(device, renderSemaphores[i], nullptr);
+        vmaUnmapMemory(allocator, shaderDataBuffers[i].allocation);
+        vmaDestroyBuffer(allocator, shaderDataBuffers[i].buffer, shaderDataBuffers[i].allocation);
+    }
+
+    vmaDestroyImage(allocator, depthImage, depthImageAllocation);
+    vkDestroyImageView(device, depthImageView, nullptr);
+
+    for (auto i = 0; i < swapchainImageViews.size(); i++)
+    {
+        vkDestroyImageView(device, swapchainImageViews[i], nullptr);
+    }
+
+    for (const BufferDesc& bufferDesc : modelBuffers)
+    {
+        vmaDestroyBuffer(allocator, bufferDesc.buffer, bufferDesc.allocation);
+    }
+
+    // TODO: destroy textures
+
+    vkDestroyDescriptorSetLayout(device, descriptorSetLayoutTex, nullptr);
+    vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+    vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+    vkDestroyPipeline(device, pipeline, nullptr);
+    vkDestroySwapchainKHR(device, swapchain, nullptr);
+    vkDestroySurfaceKHR(instance, surface, nullptr);
+    vkDestroyCommandPool(device, commandPool, nullptr);
+    vkDestroyShaderModule(device, shaderModule, nullptr);
+    vmaDestroyAllocator(allocator);
+    vkDestroyDevice(device, nullptr);
+    vkDestroyInstance(instance, nullptr);
 }
 
 bool VulkanAdapter::IsReady()

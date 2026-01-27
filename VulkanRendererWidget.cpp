@@ -12,6 +12,7 @@ VulkanRendererWidget::VulkanRendererWidget()
 
 VulkanRendererWidget::~VulkanRendererWidget()
 {
+    delete m_adapter;
 }
 
 void VulkanRendererWidget::SetWrapper(QWidget* wrapper)
