@@ -410,9 +410,9 @@ void VulkanAdapter::Tick(double delta)
 
 void VulkanAdapter::LoadModel(const Model& model)
 {
-    vkDeviceWaitIdle(device);
-
     std::lock_guard<std::mutex> guard(renderLock);
+
+    vkDeviceWaitIdle(device);
 
     std::vector<BufferDesc> newModelBuffers;
     for (const Shape& shape : model.shapes)
