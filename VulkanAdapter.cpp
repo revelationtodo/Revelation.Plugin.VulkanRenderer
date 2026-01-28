@@ -64,16 +64,19 @@ void VulkanAdapter::Initialize()
         return;
     }
 
+    // init vulkan command pools
     if (!InitVulkanCommandPools())
     {
         return;
     }
 
+    // init vulkan descriptor set layout
     if (!InitVulkanDescriptorSetLayout())
     {
         return;
     }
 
+    // init vulkan pipeline
     if (!InitVulkanPipeline())
     {
         return;
