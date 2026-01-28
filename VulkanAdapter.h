@@ -20,7 +20,7 @@
 #include <ktx.h>
 #include <ktxvulkan.h>
 
-#include "Parser/IParser.h"
+#include "Parser/ParserManager.h"
 
 class VulkanRendererWidget;
 
@@ -38,8 +38,6 @@ class VulkanAdapter
     bool IsReady();
     void Tick(double delta);
 
-    void LoadModel(const Model& model);
-
   private:
     bool Check(VkResult result);
     bool Check(bool result);
@@ -56,8 +54,14 @@ class VulkanAdapter
     bool InitVulkanDescriptorSetLayout();
     bool InitVulkanPipeline();
 
+    void PollInputEvents();
+
+    bool UpdateSwapchain();
+    void LoadModel(const Model& model);
+
   private:
     VulkanRendererWidget* m_targetWindow = nullptr;
+    ParserManager         m_parserManager;
 
     bool m_ready = false;
 
@@ -102,8 +106,6 @@ class VulkanAdapter
         uint16_t     indexCount          = 0;
     };
 
-    std::mutex renderLock;
-
     uint32_t                 imageIndex       = 0;
     uint32_t                 frameIndex       = 0;
     VkInstance               instance         = VK_NULL_HANDLE;
@@ -135,5 +137,8 @@ class VulkanAdapter
     VkPipeline               pipeline               = VK_NULL_HANDLE;
 
     std::vector<BufferDesc> modelBuffers;
+
+    std::mutex renderLock;
+    bool       updateSwapchain = false;
     //////////////////////////////////////////////////////////////////////////
 };

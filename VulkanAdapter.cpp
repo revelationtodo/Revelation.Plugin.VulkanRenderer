@@ -134,99 +134,11 @@ void VulkanAdapter::Tick(double delta)
 {
     std::lock_guard<std::mutex> guard(renderLock);
 
-    // update
-    if (m_targetWindow->IsResized())
+    PollInputEvents();
+
+    if (updateSwapchain)
     {
-        vkDeviceWaitIdle(device);
-
-        // recreate swapchain
-        VkSurfaceCapabilitiesKHR surfaceCaps{};
-        if (!Check(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfaceCaps)))
-        {
-            return;
-        }
-        const VkFormat           imageFormat{VK_FORMAT_B8G8R8A8_SRGB};
-        VkSwapchainCreateInfoKHR swapchainCI{
-            .sType           = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-            .surface         = surface,
-            .minImageCount   = surfaceCaps.minImageCount,
-            .imageFormat     = imageFormat,
-            .imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,
-            .imageExtent{.width  = m_targetWindow->GetWidthPix(),
-                         .height = m_targetWindow->GetHeightPix()},
-            .imageArrayLayers = 1,
-            .imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-            .preTransform     = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
-            .compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-            .presentMode      = VK_PRESENT_MODE_FIFO_KHR,
-            .oldSwapchain     = swapchain};
-        if (!Check(vkCreateSwapchainKHR(device, &swapchainCI, nullptr, &swapchain)))
-        {
-            return;
-        }
-
-        // recreate swapchain image views
-        for (auto i = 0; i < swapchainImageViews.size(); i++)
-        {
-            vkDestroyImageView(device, swapchainImageViews[i], nullptr);
-        }
-        uint32_t imageCount = 0;
-        vkGetSwapchainImagesKHR(device, swapchain, &imageCount, nullptr);
-        swapchainImages.resize(imageCount);
-        vkGetSwapchainImagesKHR(device, swapchain, &imageCount, swapchainImages.data());
-        swapchainImageViews.resize(imageCount);
-        for (int i = 0; i < imageCount; ++i)
-        {
-            VkImageViewCreateInfo viewCI{
-                .sType    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-                .image    = swapchainImages[i],
-                .viewType = VK_IMAGE_VIEW_TYPE_2D,
-                .format   = imageFormat,
-                .subresourceRange{
-                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                    .levelCount = 1,
-                    .layerCount = 1}};
-            if (!Check(vkCreateImageView(device, &viewCI, nullptr, &swapchainImageViews[i])))
-            {
-                return;
-            }
-        }
-
-        // recreate depth attachment
-        vkDestroySwapchainKHR(device, swapchainCI.oldSwapchain, nullptr);
-        vmaDestroyImage(allocator, depthImage, depthImageAllocation);
-        vkDestroyImageView(device, depthImageView, nullptr);
-        const VkFormat    depthFormat{VK_FORMAT_D24_UNORM_S8_UINT};
-        VkImageCreateInfo depthImageCI{
-            .sType     = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-            .imageType = VK_IMAGE_TYPE_2D,
-            .format    = depthFormat,
-            .extent{.width  = m_targetWindow->GetWidthPix(),
-                    .height = m_targetWindow->GetHeightPix(),
-                    .depth  = 1},
-            .mipLevels     = 1,
-            .arrayLayers   = 1,
-            .samples       = VK_SAMPLE_COUNT_1_BIT,
-            .tiling        = VK_IMAGE_TILING_OPTIMAL,
-            .usage         = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-            .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED};
-        VmaAllocationCreateInfo allocCI{
-            .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
-            .usage = VMA_MEMORY_USAGE_AUTO};
-        vmaCreateImage(allocator, &depthImageCI, &allocCI, &depthImage, &depthImageAllocation, nullptr);
-        VkImageViewCreateInfo depthViewCI{
-            .sType    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-            .image    = depthImage,
-            .viewType = VK_IMAGE_VIEW_TYPE_2D,
-            .format   = depthFormat,
-            .subresourceRange{
-                .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-                .levelCount = 1,
-                .layerCount = 1}};
-        if (!Check(vkCreateImageView(device, &depthViewCI, nullptr, &depthImageView)))
-        {
-            return;
-        }
+        UpdateSwapchain();
     }
 
     if (!Check(vkWaitForFences(device, 1, &fences[frameIndex], true, UINT64_MAX)) ||
@@ -408,53 +320,6 @@ void VulkanAdapter::Tick(double delta)
     }
 }
 
-void VulkanAdapter::LoadModel(const Model& model)
-{
-    std::lock_guard<std::mutex> guard(renderLock);
-
-    vkDeviceWaitIdle(device);
-
-    std::vector<BufferDesc> newModelBuffers;
-    for (const Shape& shape : model.shapes)
-    {
-
-        VkDeviceSize       vbSize = sizeof(Vertex) * shape.vertices.size();
-        VkDeviceSize       ibSize = sizeof(uint16_t) * shape.indices.size();
-        VkBufferCreateInfo bufferCI{
-            .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            .size  = vbSize + ibSize,
-            .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-                     VK_BUFFER_USAGE_INDEX_BUFFER_BIT};
-        VmaAllocationCreateInfo bufferAllocCI{
-            .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-                     VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT |
-                     VMA_ALLOCATION_CREATE_MAPPED_BIT,
-            .usage = VMA_MEMORY_USAGE_AUTO};
-
-        BufferDesc bufferDesc;
-        if (Check(vmaCreateBuffer(allocator, &bufferCI, &bufferAllocCI, &bufferDesc.buffer, &bufferDesc.allocation, nullptr)))
-        {
-            bufferDesc.offsetOfIndexBuffer = vbSize;
-            bufferDesc.indexCount          = shape.indices.size();
-
-            void* mapped = nullptr;
-            vmaMapMemory(allocator, bufferDesc.allocation, &mapped);
-            memcpy(mapped, shape.vertices.data(), vbSize);
-            memcpy(((char*)mapped) + vbSize, shape.indices.data(), ibSize);
-            vmaUnmapMemory(allocator, bufferDesc.allocation);
-
-            newModelBuffers.emplace_back(std::move(bufferDesc));
-        }
-    }
-
-    std::swap(modelBuffers, newModelBuffers);
-
-    for (const BufferDesc& bufferDesc : newModelBuffers)
-    {
-        vmaDestroyBuffer(allocator, bufferDesc.buffer, bufferDesc.allocation);
-    }
-}
-
 bool VulkanAdapter::Check(VkResult result)
 {
     if (result != VK_SUCCESS)
@@ -481,6 +346,7 @@ bool VulkanAdapter::CheckSwapchain(VkResult result)
     {
         if (result == VK_ERROR_OUT_OF_DATE_KHR)
         {
+            updateSwapchain = true;
             return true;
         }
         return false;
@@ -1007,4 +873,172 @@ bool VulkanAdapter::InitVulkanPipeline()
         return false;
     }
     return true;
+}
+
+void VulkanAdapter::PollInputEvents()
+{
+    while (auto eventOpt = m_targetWindow->PollEvent())
+    {
+        Event event = eventOpt.value();
+        if (event.type == EventType::ResizeEvent)
+        {
+            updateSwapchain = true;
+        }
+        else if (event.type == EventType::DropEvent)
+        {
+            DropEventData data = std::any_cast<DropEventData>(event.data);
+            std::thread   loadThread([this, data]() {
+                Model model;
+                if (m_parserManager.Parse(data.file, model))
+                {
+                    LoadModel(model);
+                }
+            });
+            loadThread.detach();
+        }
+    }
+}
+
+bool VulkanAdapter::UpdateSwapchain()
+{
+    vkDeviceWaitIdle(device);
+
+    // recreate swapchain
+    VkSurfaceCapabilitiesKHR surfaceCaps{};
+    if (!Check(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfaceCaps)))
+    {
+        return false;
+    }
+    const VkFormat           imageFormat{VK_FORMAT_B8G8R8A8_SRGB};
+    VkSwapchainCreateInfoKHR swapchainCI{
+        .sType           = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .surface         = surface,
+        .minImageCount   = surfaceCaps.minImageCount,
+        .imageFormat     = imageFormat,
+        .imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,
+        .imageExtent{.width  = m_targetWindow->GetWidthPix(),
+                     .height = m_targetWindow->GetHeightPix()},
+        .imageArrayLayers = 1,
+        .imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        .preTransform     = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+        .compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+        .presentMode      = VK_PRESENT_MODE_FIFO_KHR,
+        .oldSwapchain     = swapchain};
+    if (!Check(vkCreateSwapchainKHR(device, &swapchainCI, nullptr, &swapchain)))
+    {
+        return false;
+    }
+
+    // recreate swapchain image views
+    for (auto i = 0; i < swapchainImageViews.size(); i++)
+    {
+        vkDestroyImageView(device, swapchainImageViews[i], nullptr);
+    }
+    uint32_t imageCount = 0;
+    vkGetSwapchainImagesKHR(device, swapchain, &imageCount, nullptr);
+    swapchainImages.resize(imageCount);
+    vkGetSwapchainImagesKHR(device, swapchain, &imageCount, swapchainImages.data());
+    swapchainImageViews.resize(imageCount);
+    for (int i = 0; i < imageCount; ++i)
+    {
+        VkImageViewCreateInfo viewCI{
+            .sType    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image    = swapchainImages[i],
+            .viewType = VK_IMAGE_VIEW_TYPE_2D,
+            .format   = imageFormat,
+            .subresourceRange{
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .levelCount = 1,
+                .layerCount = 1}};
+        if (!Check(vkCreateImageView(device, &viewCI, nullptr, &swapchainImageViews[i])))
+        {
+            return false;
+        }
+    }
+
+    // recreate depth attachment
+    vkDestroySwapchainKHR(device, swapchainCI.oldSwapchain, nullptr);
+    vmaDestroyImage(allocator, depthImage, depthImageAllocation);
+    vkDestroyImageView(device, depthImageView, nullptr);
+    const VkFormat    depthFormat{VK_FORMAT_D24_UNORM_S8_UINT};
+    VkImageCreateInfo depthImageCI{
+        .sType     = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format    = depthFormat,
+        .extent{.width  = m_targetWindow->GetWidthPix(),
+                .height = m_targetWindow->GetHeightPix(),
+                .depth  = 1},
+        .mipLevels     = 1,
+        .arrayLayers   = 1,
+        .samples       = VK_SAMPLE_COUNT_1_BIT,
+        .tiling        = VK_IMAGE_TILING_OPTIMAL,
+        .usage         = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED};
+    VmaAllocationCreateInfo allocCI{
+        .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
+        .usage = VMA_MEMORY_USAGE_AUTO};
+    vmaCreateImage(allocator, &depthImageCI, &allocCI, &depthImage, &depthImageAllocation, nullptr);
+    VkImageViewCreateInfo depthViewCI{
+        .sType    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image    = depthImage,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format   = depthFormat,
+        .subresourceRange{
+            .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+            .levelCount = 1,
+            .layerCount = 1}};
+    if (!Check(vkCreateImageView(device, &depthViewCI, nullptr, &depthImageView)))
+    {
+        return false;
+    }
+
+    updateSwapchain = false;
+    return true;
+}
+
+void VulkanAdapter::LoadModel(const Model& model)
+{
+    std::lock_guard<std::mutex> guard(renderLock);
+
+    vkDeviceWaitIdle(device);
+
+    std::vector<BufferDesc> newModelBuffers;
+    for (const Shape& shape : model.shapes)
+    {
+
+        VkDeviceSize       vbSize = sizeof(Vertex) * shape.vertices.size();
+        VkDeviceSize       ibSize = sizeof(uint16_t) * shape.indices.size();
+        VkBufferCreateInfo bufferCI{
+            .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .size  = vbSize + ibSize,
+            .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+                     VK_BUFFER_USAGE_INDEX_BUFFER_BIT};
+        VmaAllocationCreateInfo bufferAllocCI{
+            .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                     VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT |
+                     VMA_ALLOCATION_CREATE_MAPPED_BIT,
+            .usage = VMA_MEMORY_USAGE_AUTO};
+
+        BufferDesc bufferDesc;
+        if (Check(vmaCreateBuffer(allocator, &bufferCI, &bufferAllocCI, &bufferDesc.buffer, &bufferDesc.allocation, nullptr)))
+        {
+            bufferDesc.offsetOfIndexBuffer = vbSize;
+            bufferDesc.indexCount          = shape.indices.size();
+
+            void* mapped = nullptr;
+            vmaMapMemory(allocator, bufferDesc.allocation, &mapped);
+            memcpy(mapped, shape.vertices.data(), vbSize);
+            memcpy(((char*)mapped) + vbSize, shape.indices.data(), ibSize);
+            vmaUnmapMemory(allocator, bufferDesc.allocation);
+
+            newModelBuffers.emplace_back(std::move(bufferDesc));
+        }
+    }
+
+    std::swap(modelBuffers, newModelBuffers);
+
+    for (const BufferDesc& bufferDesc : newModelBuffers)
+    {
+        vmaDestroyBuffer(allocator, bufferDesc.buffer, bufferDesc.allocation);
+    }
 }

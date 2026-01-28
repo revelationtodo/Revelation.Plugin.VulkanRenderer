@@ -5,7 +5,8 @@
 #include <QElapsedTimer>
 #include <vector>
 #include <filesystem>
-#include "Parser/ParserManager.h"
+#include <optional>
+#include "Event/EventQueue.h"
 
 class IRevelationInterface;
 class VulkanAdapter;
@@ -22,12 +23,11 @@ class VulkanRendererWidget : public QWindow
 
     uint32_t GetWidthPix();
     uint32_t GetHeightPix();
-    bool     IsResized();
 
-    void LoadModel(const std::string& filePath);
+    std::optional<Event> PollEvent();
 
   protected:
-    void resizeEvent(QResizeEvent* event) override;
+    void showEvent(QShowEvent* event) override;
 
   private:
     void Initialize();
@@ -45,10 +45,6 @@ class VulkanRendererWidget : public QWindow
     QTimer        m_frameTimer;
     QElapsedTimer m_clock;
     qint64        m_lastNs = 0;
-
-    bool m_resized = false;
-
-    std::unique_ptr<ParserManager> m_parserManager;
 };
 
 class VulkanRendererWidgetWrapper : public QWidget
@@ -59,11 +55,19 @@ class VulkanRendererWidgetWrapper : public QWidget
     VulkanRendererWidgetWrapper(QWidget* parent = nullptr);
     ~VulkanRendererWidgetWrapper();
 
+    std::optional<Event> PollEvent();
+
   protected:
     bool eventFilter(QObject* watched, QEvent* event);
+    void resizeEvent(QResizeEvent* event) override;
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dragMoveEvent(QDragMoveEvent* event) override;
     void dropEvent(QDropEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void wheelEvent(QWheelEvent* event) override;
 
   private:
     void Initialize();
@@ -72,4 +76,10 @@ class VulkanRendererWidgetWrapper : public QWidget
 
   private:
     VulkanRendererWidget* m_rendererWidget = nullptr;
+
+    EventQueue m_eventQueue;
+
+    bool   m_leftBtnPressed  = false;
+    bool   m_rightBtnPressed = false;
+    QPoint m_pressedPoint;
 };

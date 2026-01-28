@@ -64,6 +64,10 @@ add_library(${PROJECT_NAME} SHARED
                VulkanRendererWidget.cpp
                VulkanRendererWidget.h
 
+               Event/Events.h
+               Event/EventQueue.cpp
+               Event/EventQueue.h
+
                Parser/IParser.h
                Parser/ParserManager.cpp
                Parser/ParserManager.h

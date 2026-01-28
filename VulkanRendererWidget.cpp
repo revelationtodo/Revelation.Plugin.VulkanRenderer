@@ -48,37 +48,23 @@ uint32_t VulkanRendererWidget::GetHeightPix()
     return uint32_t(logical.height() * dpr);
 }
 
-bool VulkanRendererWidget::IsResized()
+std::optional<Event> VulkanRendererWidget::PollEvent()
 {
-    bool resized = m_resized;
-    m_resized    = false;
-    return resized;
+    return dynamic_cast<VulkanRendererWidgetWrapper*>(m_wrapper)->PollEvent();
 }
 
-void VulkanRendererWidget::LoadModel(const std::string& filePath)
+void VulkanRendererWidget::showEvent(QShowEvent* event)
 {
-    std::thread loadThread([this, filePath]() {
-        Model model;
-        if (m_parserManager->Parse(filePath, model))
-        {
-            m_adapter->LoadModel(model);
-        }
-    });
-    loadThread.detach();
-}
-
-void VulkanRendererWidget::resizeEvent(QResizeEvent* event)
-{
-    m_resized = true;
-    return QWindow::resizeEvent(event);
+    if (!m_frameTimer.isActive())
+    {
+        m_frameTimer.start();
+    }
 }
 
 void VulkanRendererWidget::Initialize()
 {
     InitWidget();
     InitSignalSlots();
-
-    m_parserManager = std::make_unique<ParserManager>();
 
     m_adapter = new VulkanAdapter(this);
     m_adapter->Initialize();
@@ -90,8 +76,6 @@ void VulkanRendererWidget::Initialize()
     m_frameTimer.setInterval(16);
 
     connect(&m_frameTimer, &QTimer::timeout, this, &VulkanRendererWidget::TriggerTick);
-
-    m_frameTimer.start();
 }
 
 void VulkanRendererWidget::InitWidget()
@@ -127,6 +111,16 @@ VulkanRendererWidgetWrapper::~VulkanRendererWidgetWrapper()
     delete m_rendererWidget;
 }
 
+std::optional<Event> VulkanRendererWidgetWrapper::PollEvent()
+{
+    if (m_eventQueue.Empty())
+    {
+        return std::nullopt;
+    }
+
+    return m_eventQueue.Pop();
+}
+
 bool VulkanRendererWidgetWrapper::eventFilter(QObject* watched, QEvent* event)
 {
     switch (event->type())
@@ -140,10 +134,32 @@ bool VulkanRendererWidgetWrapper::eventFilter(QObject* watched, QEvent* event)
         case QEvent::Drop:
             dropEvent(static_cast<QDropEvent*>(event));
             return true;
+        case QEvent::MouseButtonPress:
+            mousePressEvent(static_cast<QMouseEvent*>(event));
+            return true;
+        case QEvent::MouseButtonRelease:
+            mouseReleaseEvent(static_cast<QMouseEvent*>(event));
+            return true;
+        case QEvent::MouseButtonDblClick:
+            mouseDoubleClickEvent(static_cast<QMouseEvent*>(event));
+            return true;
+        case QEvent::MouseMove:
+            mouseMoveEvent(static_cast<QMouseEvent*>(event));
+            return true;
+        case QEvent::Wheel:
+            wheelEvent(static_cast<QWheelEvent*>(event));
+            return true;
         default:
             break;
     }
     return QWidget::eventFilter(watched, event);
+}
+
+void VulkanRendererWidgetWrapper::resizeEvent(QResizeEvent* event)
+{
+    Event e{.type = EventType::ResizeEvent,
+            .data = ResizeEventData{}};
+    m_eventQueue.Push(std::move(e));
 }
 
 void VulkanRendererWidgetWrapper::dragEnterEvent(QDragEnterEvent* event)
@@ -191,12 +207,106 @@ void VulkanRendererWidgetWrapper::dropEvent(QDropEvent* event)
 
     if (!paths.empty())
     {
-        m_rendererWidget->LoadModel(paths[0]);
+        Event e{.type = EventType::DropEvent,
+                .data = DropEventData{.file = paths[0]}};
+        m_eventQueue.Push(std::move(e));
+
         event->acceptProposedAction();
         return;
     }
 
     event->ignore();
+}
+
+void VulkanRendererWidgetWrapper::mousePressEvent(QMouseEvent* event)
+{
+    m_pressedPoint = event->pos();
+
+    MouseBtnType btnType = MouseBtnType::None;
+    if (event->button() == Qt::LeftButton)
+    {
+        m_leftBtnPressed = true;
+        btnType          = MouseBtnType::Left;
+    }
+    else if (event->button() == Qt::RightButton)
+    {
+        m_rightBtnPressed = true;
+        btnType           = MouseBtnType::Right;
+    }
+
+    Event e{.type = EventType::MouseEvent,
+            .data = MouseEventData{.event = MouseEventType::Press,
+                                   .btn   = btnType}};
+    m_eventQueue.Push(std::move(e));
+}
+
+void VulkanRendererWidgetWrapper::mouseReleaseEvent(QMouseEvent* event)
+{
+    MouseBtnType btnType = MouseBtnType::None;
+    if (event->button() == Qt::LeftButton)
+    {
+        btnType = MouseBtnType::Left;
+    }
+    else if (event->button() == Qt::RightButton)
+    {
+        btnType = MouseBtnType::Right;
+    }
+
+    Event e{.type = EventType::MouseEvent,
+            .data = MouseEventData{.event = MouseEventType::Release,
+                                   .btn   = btnType}};
+    m_eventQueue.Push(std::move(e));
+
+    if (event->button() == Qt::LeftButton)
+    {
+        m_leftBtnPressed = false;
+    }
+    else if (event->button() == Qt::RightButton)
+    {
+        m_rightBtnPressed = false;
+    }
+}
+
+void VulkanRendererWidgetWrapper::mouseDoubleClickEvent(QMouseEvent* event)
+{
+    MouseBtnType btnType = MouseBtnType::None;
+    if (event->button() == Qt::LeftButton)
+    {
+        btnType = MouseBtnType::Left;
+    }
+    else if (event->button() == Qt::RightButton)
+    {
+        btnType = MouseBtnType::Right;
+    }
+
+    Event e{.type = EventType::MouseEvent,
+            .data = MouseEventData{.event = MouseEventType::DoubleClick,
+                                   .btn   = btnType}};
+    m_eventQueue.Push(std::move(e));
+}
+
+void VulkanRendererWidgetWrapper::mouseMoveEvent(QMouseEvent* event)
+{
+    QPoint pos   = event->pos();
+    QPoint delta = pos - m_pressedPoint;
+
+    Event e{.type = EventType::MouseEvent,
+            .data = MouseEventData{.event           = MouseEventType::Move,
+                                   .deltaX          = delta.x(),
+                                   .deltaY          = delta.y(),
+                                   .leftBtnPressed  = m_leftBtnPressed,
+                                   .rightBtnPressed = m_rightBtnPressed}};
+    m_eventQueue.Push(std::move(e));
+}
+
+void VulkanRendererWidgetWrapper::wheelEvent(QWheelEvent* event)
+{
+    QPoint delta = event->angleDelta();
+    Event  e{.type = EventType::MouseEvent,
+             .data = MouseEventData{.event           = MouseEventType::Wheel,
+                                    .deltaX          = delta.x(),
+                                    .deltaY          = delta.y()}};
+    m_eventQueue.Push(std::move(e));
 }
 
 void VulkanRendererWidgetWrapper::Initialize()
