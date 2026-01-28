@@ -28,6 +28,7 @@ class VulkanRendererWidget : public QWindow
 
   protected:
     void showEvent(QShowEvent* event) override;
+    void wheelEvent(QWheelEvent* event) override;
 
   private:
     void Initialize();

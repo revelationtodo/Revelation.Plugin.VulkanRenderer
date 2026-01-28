@@ -61,6 +61,11 @@ void VulkanRendererWidget::showEvent(QShowEvent* event)
     }
 }
 
+void VulkanRendererWidget::wheelEvent(QWheelEvent* event)
+{
+    QWindow::wheelEvent(event);
+}
+
 void VulkanRendererWidget::Initialize()
 {
     InitWidget();
@@ -123,34 +128,16 @@ std::optional<Event> VulkanRendererWidgetWrapper::PollEvent()
 
 bool VulkanRendererWidgetWrapper::eventFilter(QObject* watched, QEvent* event)
 {
-    switch (event->type())
+    if (watched == m_rendererWidget)
     {
-        case QEvent::DragEnter:
-            dragEnterEvent(static_cast<QDragEnterEvent*>(event));
-            return true;
-        case QEvent::DragMove:
-            dragMoveEvent(static_cast<QDragMoveEvent*>(event));
-            return true;
-        case QEvent::Drop:
-            dropEvent(static_cast<QDropEvent*>(event));
-            return true;
-        case QEvent::MouseButtonPress:
-            mousePressEvent(static_cast<QMouseEvent*>(event));
-            return true;
-        case QEvent::MouseButtonRelease:
-            mouseReleaseEvent(static_cast<QMouseEvent*>(event));
-            return true;
-        case QEvent::MouseButtonDblClick:
-            mouseDoubleClickEvent(static_cast<QMouseEvent*>(event));
-            return true;
-        case QEvent::MouseMove:
-            mouseMoveEvent(static_cast<QMouseEvent*>(event));
-            return true;
-        case QEvent::Wheel:
-            wheelEvent(static_cast<QWheelEvent*>(event));
-            return true;
-        default:
-            break;
+        switch (event->type())
+        {
+            case QEvent::Wheel:
+                wheelEvent(static_cast<QWheelEvent*>(event));
+                return true;
+            default:
+                break;
+        }
     }
     return QWidget::eventFilter(watched, event);
 }
@@ -303,9 +290,9 @@ void VulkanRendererWidgetWrapper::wheelEvent(QWheelEvent* event)
 {
     QPoint delta = event->angleDelta();
     Event  e{.type = EventType::MouseEvent,
-             .data = MouseEventData{.event           = MouseEventType::Wheel,
-                                    .deltaX          = delta.x(),
-                                    .deltaY          = delta.y()}};
+             .data = MouseEventData{.event  = MouseEventType::Wheel,
+                                    .deltaX = delta.x(),
+                                    .deltaY = delta.y()}};
     m_eventQueue.Push(std::move(e));
 }
 
@@ -317,12 +304,13 @@ void VulkanRendererWidgetWrapper::Initialize()
 
 void VulkanRendererWidgetWrapper::InitWidget()
 {
-    m_rendererWidget   = new VulkanRendererWidget;
+    m_rendererWidget = new VulkanRendererWidget;
+    m_rendererWidget->SetWrapper(this);
+    m_rendererWidget->installEventFilter(this);
+
     QWidget* container = QWidget::createWindowContainer(m_rendererWidget, nullptr);
     container->setAcceptDrops(true);
-    container->installEventFilter(this);
-
-    m_rendererWidget->SetWrapper(this);
+    container->setAttribute(Qt::WA_TransparentForMouseEvents, true);
     QGridLayout* layout = new QGridLayout(this);
     layout->setSpacing(0);
     layout->setContentsMargins(8, 38, 8, 8);

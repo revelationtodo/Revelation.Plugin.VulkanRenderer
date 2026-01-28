@@ -7,8 +7,6 @@
 #define VMA_IMPLEMENTATION
 #include <vma/vk_mem_alloc.h>
 
-glm::vec3 camPos1{0.0f, 0.0f, -6.0f};
-
 VulkanAdapter::VulkanAdapter(VulkanRendererWidget* targetWindow)
     : m_targetWindow(targetWindow)
 {
@@ -134,7 +132,7 @@ void VulkanAdapter::Tick(double delta)
 {
     std::lock_guard<std::mutex> guard(renderLock);
 
-    PollInputEvents();
+    PollInputEvents(delta);
 
     if (updateSwapchain)
     {
@@ -155,7 +153,7 @@ void VulkanAdapter::Tick(double delta)
     // update shader data
     float aspect          = (float)m_targetWindow->width() / m_targetWindow->height();
     shaderData.projection = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 32.0f);
-    shaderData.view       = glm::translate(glm::mat4(1), camPos1);
+    shaderData.view       = glm::translate(glm::mat4(1), camPos);
 
     // test
     auto instancePos = glm::vec3(0.0f, 0.0f, 0.0f);
@@ -875,7 +873,7 @@ bool VulkanAdapter::InitVulkanPipeline()
     return true;
 }
 
-void VulkanAdapter::PollInputEvents()
+void VulkanAdapter::PollInputEvents(double delta)
 {
     while (auto eventOpt = m_targetWindow->PollEvent())
     {
@@ -895,6 +893,14 @@ void VulkanAdapter::PollInputEvents()
                 }
             });
             loadThread.detach();
+        }
+        else if (event.type == EventType::MouseEvent)
+        {
+            MouseEventData data = std::any_cast<MouseEventData>(event.data);
+            if (data.event == MouseEventType::Wheel)
+            {
+                camPos.z += data.deltaY * delta * 0.5f;
+            }
         }
     }
 }

@@ -54,7 +54,7 @@ class VulkanAdapter
     bool InitVulkanDescriptorSetLayout();
     bool InitVulkanPipeline();
 
-    void PollInputEvents();
+    void PollInputEvents(double delta);
 
     bool UpdateSwapchain();
     void LoadModel(const Model& model);
@@ -105,6 +105,8 @@ class VulkanAdapter
         VkDeviceSize offsetOfIndexBuffer = 0;
         uint16_t     indexCount          = 0;
     };
+
+    glm::vec3 camPos{0.0f, 0.0f, -6.0f};
 
     uint32_t                 imageIndex       = 0;
     uint32_t                 frameIndex       = 0;

@@ -5,8 +5,7 @@ enum class EventType
     None,
     ResizeEvent,
     DropEvent,
-    MouseEvent,
-    MouseWheelEvent,
+    MouseEvent
 };
 
 struct Event
@@ -45,8 +44,8 @@ struct MouseEventData
 {
     MouseEventType event           = MouseEventType::None;
     MouseBtnType   btn             = MouseBtnType::None;
-    int            deltaX           = 0;
-    int            deltaY           = 0;
+    int            deltaX          = 0;
+    int            deltaY          = 0;
     bool           leftBtnPressed  = false;
     bool           rightBtnPressed = false;
 };
