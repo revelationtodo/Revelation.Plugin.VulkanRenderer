@@ -10,7 +10,7 @@ struct Vertex
     glm::vec2 uv;
 };
 
-using Index = uint16_t;
+using Index = uint32_t;
 
 struct Shape
 {

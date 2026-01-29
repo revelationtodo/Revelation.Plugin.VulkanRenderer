@@ -258,7 +258,7 @@ void VulkanAdapter::Tick(double delta)
     {
         VkDeviceSize vOffset = 0;
         vkCmdBindVertexBuffers(commandBuffer, 0, 1, &bufferDesc.buffer, &vOffset);
-        vkCmdBindIndexBuffer(commandBuffer, bufferDesc.buffer, bufferDesc.offsetOfIndexBuffer, VK_INDEX_TYPE_UINT16);
+        vkCmdBindIndexBuffer(commandBuffer, bufferDesc.buffer, bufferDesc.offsetOfIndexBuffer, VK_INDEX_TYPE_UINT32);
         vkCmdPushConstants(commandBuffer,
                            pipelineLayout,
                            VK_SHADER_STAGE_VERTEX_BIT,
@@ -1015,9 +1015,8 @@ void VulkanAdapter::LoadModel(const Model& model)
     std::vector<BufferDesc> newModelBuffers;
     for (const Shape& shape : model.shapes)
     {
-
         VkDeviceSize       vbSize = sizeof(Vertex) * shape.vertices.size();
-        VkDeviceSize       ibSize = sizeof(uint16_t) * shape.indices.size();
+        VkDeviceSize       ibSize = sizeof(uint32_t) * shape.indices.size();
         VkBufferCreateInfo bufferCI{
             .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
             .size  = vbSize + ibSize,
