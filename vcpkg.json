@@ -6,6 +6,6 @@
     "sqlite3",
     "jsoncpp",
     "ktx",
-    "tinyobjloader"
+    "assimp"
   ]
 }
