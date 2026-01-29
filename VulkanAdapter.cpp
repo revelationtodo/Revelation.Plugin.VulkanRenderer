@@ -1016,7 +1016,7 @@ void VulkanAdapter::LoadModel(const Model& model)
     for (const Shape& shape : model.shapes)
     {
         VkDeviceSize       vbSize = sizeof(Vertex) * shape.vertices.size();
-        VkDeviceSize       ibSize = sizeof(uint32_t) * shape.indices.size();
+        VkDeviceSize       ibSize = sizeof(Index) * shape.indices.size();
         VkBufferCreateInfo bufferCI{
             .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
             .size  = vbSize + ibSize,

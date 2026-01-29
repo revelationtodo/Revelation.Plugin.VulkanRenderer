@@ -102,7 +102,7 @@ class VulkanAdapter
         VmaAllocation allocation = VK_NULL_HANDLE;
 
         VkDeviceSize offsetOfIndexBuffer = 0;
-        uint16_t     indexCount          = 0;
+        Index        indexCount          = 0;
     };
 
     glm::vec3 camPos{0.0f, 0.0f, -6.0f};
