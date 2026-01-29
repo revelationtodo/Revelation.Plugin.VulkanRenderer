@@ -891,7 +891,7 @@ void VulkanAdapter::PollInputEvents(double delta)
             DropEventData data = std::any_cast<DropEventData>(event.data);
             std::thread   loadThread([this, data]() {
                 Model model;
-                if (m_parserManager.Parse(data.file, model))
+                if (m_parser.Parse(data.file, model))
                 {
                     LoadModel(model);
                 }

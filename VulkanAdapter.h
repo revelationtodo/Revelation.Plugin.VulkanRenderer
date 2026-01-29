@@ -19,7 +19,7 @@
 
 #include <ktx.h>
 
-#include "Parser/ParserManager.h"
+#include "Parser/Parser.h"
 
 class VulkanRendererWidget;
 
@@ -60,7 +60,7 @@ class VulkanAdapter
 
   private:
     VulkanRendererWidget* m_targetWindow = nullptr;
-    ParserManager         m_parserManager;
+    Parser                m_parser;
 
     bool m_ready = false;
 
