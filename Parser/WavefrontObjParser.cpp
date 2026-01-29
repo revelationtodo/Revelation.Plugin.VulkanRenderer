@@ -1,7 +1,5 @@
 #include "WavefrontObjParser.h"
 #include <filesystem>
-
-#define TINYOBJLOADER_IMPLEMENTATION
 #include <tiny_obj_loader.h>
 
 WavefrontObjParser::WavefrontObjParser()

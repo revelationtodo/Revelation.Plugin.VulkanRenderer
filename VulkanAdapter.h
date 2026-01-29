@@ -18,7 +18,6 @@
 #include "slang/slang.h"
 
 #include <ktx.h>
-#include <ktxvulkan.h>
 
 #include "Parser/ParserManager.h"
 
