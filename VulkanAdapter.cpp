@@ -155,8 +155,9 @@ void VulkanAdapter::Tick(double delta)
 
     // update shader data
     float aspect          = (float)m_targetWindow->width() / m_targetWindow->height();
-    shaderData.projection = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 32.0f);
-    shaderData.view       = glm::translate(glm::mat4(1), camPos);
+    shaderData.projection = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 3200.0f);
+    shaderData.projection[1][1] *= -1;
+    shaderData.view = glm::translate(glm::mat4(1), camPos);
 
     // test
     auto instancePos = glm::vec3(0.0f, 0.0f, 0.0f);
