@@ -30,9 +30,12 @@ struct ParserDesc
     std::set<std::string> extensions;
 };
 
-class IParser
+
+class Parser
 {
   public:
-    virtual bool CanParse(const std::string& file)            = 0;
-    virtual bool Parse(const std::string& file, Model& model) = 0;
+    Parser();
+    ~Parser();
+
+    bool Parse(const std::string& file, Model& model);
 };

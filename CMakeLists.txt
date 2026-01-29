@@ -20,7 +20,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_library(Slang_LIBRARY NAMES slang HINTS "$ENV{VULKAN_SDK}/lib" REQUIRED)
 find_package(ktx CONFIG REQUIRED)
-find_package(tinyobjloader CONFIG REQUIRED)
+find_package(assimp CONFIG REQUIRED)
 
 if(WIN32)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DVK_USE_PLATFORM_WIN32_KHR")
@@ -51,11 +51,8 @@ add_library(${PROJECT_NAME} SHARED
                Event/EventQueue.cpp
                Event/EventQueue.h
 
-               Parser/IParser.h
-               Parser/ParserManager.cpp
-               Parser/ParserManager.h
-               Parser/WavefrontObjParser.cpp
-               Parser/WavefrontObjParser.h
+               Parser/Parser.cpp
+               Parser/Parser.h
 )
 
 if(MSVC)
@@ -77,7 +74,7 @@ endif()
 
 add_definitions(-D_CRT_SECURE_NO_WARNINGS -DVK_NO_PROTOTYPES)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE KTX::ktx tinyobjloader::tinyobjloader ${Slang_LIBRARY})
+target_link_libraries(${PROJECT_NAME} PRIVATE KTX::ktx assimp::assimp ${Slang_LIBRARY})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Widgets)
 target_link_libraries(${PROJECT_NAME} PRIVATE FluUtils)
