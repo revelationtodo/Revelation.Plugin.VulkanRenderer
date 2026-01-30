@@ -137,8 +137,8 @@ class VulkanAdapter
     VkPipelineLayout         pipelineLayout         = VK_NULL_HANDLE;
     VkPipeline               pipeline               = VK_NULL_HANDLE;
 
-    Model                   model;
     std::vector<BufferDesc> modelBuffers;
+    glm::vec3               modelPos      = glm::vec3(0);
     glm::vec3               modelRotation = glm::vec3(0);
 
     std::mutex renderLock;

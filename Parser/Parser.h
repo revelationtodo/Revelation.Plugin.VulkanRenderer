@@ -17,12 +17,12 @@ struct AxisAlignedBox
     glm::vec3 min = glm::vec3(std::numeric_limits<float>::infinity());
     glm::vec3 max = glm::vec3(-std::numeric_limits<float>::infinity());
 
-    glm::vec3 Center()
+    glm::vec3 Center() const
     {
         return 0.5f * (min + max);
     }
 
-    glm::vec3 Length()
+    glm::vec3 Length() const
     {
         return max - min;
     }

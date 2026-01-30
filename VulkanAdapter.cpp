@@ -159,8 +159,7 @@ void VulkanAdapter::Tick(double elapsed)
     shaderData.projection[1][1] *= -1;
     shaderData.view = glm::translate(glm::mat4(1), camPos);
 
-    auto instancePos = model.aabb.Center();
-    shaderData.model = glm::translate(glm::mat4(1.0f), instancePos) * glm::mat4_cast(glm::quat(modelRotation));
+    shaderData.model = glm::translate(glm::mat4(1.0f), modelPos) * glm::mat4_cast(glm::quat(modelRotation));
 
     memcpy(shaderDataBuffers[frameIndex].mapped, &shaderData, sizeof(ShaderData));
 
@@ -908,10 +907,14 @@ void VulkanAdapter::PollInputEvents(double elapsed)
                     modelRotation.x += data.deltaY * elapsed * sensitivity;
                     modelRotation.y += data.deltaX * elapsed * sensitivity;
                 }
+                else if (data.rightBtnPressed)
+                {
+                    modelPos += glm::vec3(data.deltaX * elapsed, -data.deltaY * elapsed, 0);
+                }
             }
             else if (data.event == MouseEventType::Wheel)
             {
-                glm::vec3   pivot   = model.aabb.Center();
+                glm::vec3   pivot   = modelPos;
                 glm::vec3   dir     = glm::normalize(camPos - pivot);
                 float       dist    = glm::length(camPos - pivot);
                 const float minDist = 0.05f;
@@ -1062,9 +1065,9 @@ void VulkanAdapter::LoadModel(const Model& model)
     }
 
     std::swap(modelBuffers, newModelBuffers);
-    this->model = model;
 
-    camPos = this->model.aabb.Center() + glm::vec3(0, 0, -this->model.aabb.Length().z * 2.5f);
+    modelPos = model.aabb.Center();
+    camPos   = modelPos + glm::vec3(0, 0, -model.aabb.Length().z * 2.5f);
 
     for (const BufferDesc& bufferDesc : newModelBuffers)
     {
