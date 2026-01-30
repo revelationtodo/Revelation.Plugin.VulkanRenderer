@@ -81,5 +81,5 @@ class VulkanRendererWidgetWrapper : public QWidget
 
     bool   m_leftBtnPressing  = false;
     bool   m_rightBtnPressing = false;
-    QPoint m_lastPoint       = QPoint(0, 0);
+    QPoint m_lastPoint        = QPoint(0, 0);
 };
