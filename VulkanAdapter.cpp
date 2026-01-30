@@ -901,13 +901,13 @@ void VulkanAdapter::PollInputEvents(double elapsed)
             MouseEventData data = std::any_cast<MouseEventData>(event.data);
             if (data.event == MouseEventType::Move)
             {
-                if (data.leftBtnPressed)
+                if (data.leftBtnPressing)
                 {
                     const float sensitivity = 0.5f;
                     modelRotation.x += data.deltaY * elapsed * sensitivity;
                     modelRotation.y += data.deltaX * elapsed * sensitivity;
                 }
-                else if (data.rightBtnPressed)
+                else if (data.rightBtnPressing)
                 {
                     modelPos += glm::vec3(data.deltaX * elapsed, -data.deltaY * elapsed, 0);
                 }
