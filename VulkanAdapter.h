@@ -105,10 +105,15 @@ class VulkanAdapter
         Index        indexCount          = 0;
     };
 
-    glm::vec3 camPos{0.0f, 0.0f, -6.0f};
+    std::vector<BufferDesc> modelBuffers;
+    glm::vec3               camPosition = glm::vec3(0);
+    glm::vec3               camRotation = glm::vec3(0);
 
-    uint32_t                 imageIndex       = 0;
-    uint32_t                 frameIndex       = 0;
+    uint32_t   imageIndex = 0;
+    uint32_t   frameIndex = 0;
+    std::mutex renderLock;
+    bool       updateSwapchain = false;
+
     VkInstance               instance         = VK_NULL_HANDLE;
     VkPhysicalDevice         physicalDevice   = VK_NULL_HANDLE;
     uint32_t                 queueFamilyIndex = 0;
@@ -136,12 +141,5 @@ class VulkanAdapter
     VkDescriptorSet          descriptorSetTex       = VK_NULL_HANDLE;
     VkPipelineLayout         pipelineLayout         = VK_NULL_HANDLE;
     VkPipeline               pipeline               = VK_NULL_HANDLE;
-
-    std::vector<BufferDesc> modelBuffers;
-    glm::vec3               modelPos      = glm::vec3(0);
-    glm::vec3               modelRotation = glm::vec3(0);
-
-    std::mutex renderLock;
-    bool       updateSwapchain = false;
     //////////////////////////////////////////////////////////////////////////
 };

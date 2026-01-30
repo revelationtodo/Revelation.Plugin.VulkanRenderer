@@ -157,9 +157,10 @@ void VulkanAdapter::Tick(double elapsed)
     float aspect          = (float)m_targetWindow->width() / m_targetWindow->height();
     shaderData.projection = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 3200.0f);
     shaderData.projection[1][1] *= -1;
-    shaderData.view = glm::translate(glm::mat4(1), camPos);
+    shaderData.view = glm::translate(glm::mat4(1), camPosition) * glm::mat4_cast(glm::quat(camRotation));
 
-    shaderData.model = glm::translate(glm::mat4(1.0f), modelPos) * glm::mat4_cast(glm::quat(modelRotation));
+    glm::vec3 modelPos = glm::vec3(0);
+    shaderData.model   = glm::translate(glm::mat4(1.0f), modelPos);
 
     memcpy(shaderDataBuffers[frameIndex].mapped, &shaderData, sizeof(ShaderData));
 
@@ -904,28 +905,28 @@ void VulkanAdapter::PollInputEvents(double elapsed)
                 if (data.leftBtnPressing)
                 {
                     const float sensitivity = 0.5f;
-                    modelRotation.x += data.deltaY * elapsed * sensitivity;
-                    modelRotation.y += data.deltaX * elapsed * sensitivity;
+                    camRotation.x += data.deltaY * elapsed * sensitivity;
+                    camRotation.y += data.deltaX * elapsed * sensitivity;
                 }
                 else if (data.rightBtnPressing)
                 {
-                    float       dist = glm::length(camPos - modelPos);
-                    const float k    = 0.1;
+                    float       dist   = glm::length(camPosition);
+                    const float k      = 0.1;
                     float       length = dist * k;
-                    modelPos += glm::vec3(data.deltaX * elapsed * length, -data.deltaY * elapsed * length, 0);
+                    camPosition += glm::vec3(data.deltaX * elapsed * length, -data.deltaY * elapsed * length, 0);
                 }
             }
             else if (data.event == MouseEventType::Wheel)
             {
-                glm::vec3   dir     = glm::normalize(camPos - modelPos);
-                float       dist    = glm::length(camPos - modelPos);
+                glm::vec3   dir     = glm::normalize(camPosition);
+                float       dist    = glm::length(camPosition);
                 const float minDist = 0.05f;
                 const float maxDist = 1e6f;
                 float       steps   = data.deltaY / 120.0f;
                 const float k       = 0.15f;
                 float       newDist = dist * std::pow(1.0f - k, steps);
                 newDist             = std::clamp(newDist, minDist, maxDist);
-                camPos              = modelPos + dir * newDist;
+                camPosition         = dir * newDist;
             }
         }
     }
@@ -1068,8 +1069,9 @@ void VulkanAdapter::LoadModel(const Model& model)
 
     std::swap(modelBuffers, newModelBuffers);
 
-    modelPos = model.aabb.Center();
-    camPos   = modelPos + glm::vec3(0, 0, -model.aabb.Length().z * 2.5f);
+    glm::vec3 modelPos = model.aabb.Center();
+    camPosition        = modelPos + glm::vec3(0, 0, -model.aabb.Length().z * 2.5f);
+    camRotation        = glm::vec3(0);
 
     for (const BufferDesc& bufferDesc : newModelBuffers)
     {
