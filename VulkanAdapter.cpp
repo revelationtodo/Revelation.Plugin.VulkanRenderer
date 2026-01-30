@@ -909,21 +909,23 @@ void VulkanAdapter::PollInputEvents(double elapsed)
                 }
                 else if (data.rightBtnPressing)
                 {
-                    modelPos += glm::vec3(data.deltaX * elapsed, -data.deltaY * elapsed, 0);
+                    float       dist = glm::length(camPos - modelPos);
+                    const float k    = 0.1;
+                    float       length = dist * k;
+                    modelPos += glm::vec3(data.deltaX * elapsed * length, -data.deltaY * elapsed * length, 0);
                 }
             }
             else if (data.event == MouseEventType::Wheel)
             {
-                glm::vec3   pivot   = modelPos;
-                glm::vec3   dir     = glm::normalize(camPos - pivot);
-                float       dist    = glm::length(camPos - pivot);
+                glm::vec3   dir     = glm::normalize(camPos - modelPos);
+                float       dist    = glm::length(camPos - modelPos);
                 const float minDist = 0.05f;
                 const float maxDist = 1e6f;
                 float       steps   = data.deltaY / 120.0f;
                 const float k       = 0.15f;
                 float       newDist = dist * std::pow(1.0f - k, steps);
                 newDist             = std::clamp(newDist, minDist, maxDist);
-                camPos              = pivot + dir * newDist;
+                camPos              = modelPos + dir * newDist;
             }
         }
     }
