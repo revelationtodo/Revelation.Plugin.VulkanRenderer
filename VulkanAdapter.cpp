@@ -903,7 +903,16 @@ void VulkanAdapter::PollInputEvents(double delta)
             MouseEventData data = std::any_cast<MouseEventData>(event.data);
             if (data.event == MouseEventType::Wheel)
             {
-                camPos.z += data.deltaY * delta * 0.5f;
+                glm::vec3   pivot   = model.aabb.Center();
+                glm::vec3   dir     = glm::normalize(camPos - pivot);
+                float       dist    = glm::length(camPos - pivot);
+                const float minDist = 0.05f;
+                const float maxDist = 1e6f;
+                float       steps   = data.deltaY / 120.0f;
+                const float k       = 0.15f;
+                float       newDist = dist * std::pow(1.0f - k, steps);
+                newDist             = std::clamp(newDist, minDist, maxDist);
+                camPos              = pivot + dir * newDist;
             }
         }
     }
@@ -1045,6 +1054,9 @@ void VulkanAdapter::LoadModel(const Model& model)
     }
 
     std::swap(modelBuffers, newModelBuffers);
+    this->model = model;
+
+    camPos = this->model.aabb.Center() + glm::vec3(0, 0, -this->model.aabb.Length().z * 2.5f);
 
     for (const BufferDesc& bufferDesc : newModelBuffers)
     {

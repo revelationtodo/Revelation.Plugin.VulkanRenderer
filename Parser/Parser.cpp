@@ -55,6 +55,8 @@ bool Parser::Parse(const std::string& file, Model& model)
 
             const aiVector3D& p = mesh->mVertices[vi];
             v.pos               = glm::vec3(p.x, p.y, p.z);
+            shape.aabb.min      = glm::min(shape.aabb.min, v.pos);
+            shape.aabb.max      = glm::max(shape.aabb.max, v.pos);
 
             if (hasNormals)
             {
@@ -111,6 +113,12 @@ bool Parser::Parse(const std::string& file, Model& model)
         for (unsigned int idx : tmp)
         {
             shape.indices.push_back(static_cast<Index>(idx));
+        }
+
+        if (shape.vertices.size() > 0)
+        {
+            model.aabb.min = glm::min(model.aabb.min, shape.aabb.min);
+            model.aabb.max = glm::max(model.aabb.max, shape.aabb.max);
         }
 
         model.shapes.push_back(std::move(shape));
