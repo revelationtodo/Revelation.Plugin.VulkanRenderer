@@ -217,13 +217,13 @@ void VulkanRendererWidgetWrapper::mousePressEvent(QMouseEvent* event)
     MouseBtnType btnType = MouseBtnType::None;
     if (event->button() == Qt::LeftButton)
     {
-        m_leftBtnPressed = true;
-        btnType          = MouseBtnType::Left;
+        m_leftBtnPressing = true;
+        btnType           = MouseBtnType::Left;
     }
     else if (event->button() == Qt::RightButton)
     {
-        m_rightBtnPressed = true;
-        btnType           = MouseBtnType::Right;
+        m_rightBtnPressing = true;
+        btnType            = MouseBtnType::Right;
     }
 
     Event e{.type = EventType::MouseEvent,
@@ -251,11 +251,11 @@ void VulkanRendererWidgetWrapper::mouseReleaseEvent(QMouseEvent* event)
 
     if (event->button() == Qt::LeftButton)
     {
-        m_leftBtnPressed = false;
+        m_leftBtnPressing = false;
     }
     else if (event->button() == Qt::RightButton)
     {
-        m_rightBtnPressed = false;
+        m_rightBtnPressing = false;
     }
 }
 
@@ -284,11 +284,11 @@ void VulkanRendererWidgetWrapper::mouseMoveEvent(QMouseEvent* event)
     m_lastPoint  = pos;
 
     Event e{.type = EventType::MouseEvent,
-            .data = MouseEventData{.event           = MouseEventType::Move,
-                                   .deltaX          = delta.x(),
-                                   .deltaY          = delta.y(),
-                                   .leftBtnPressed  = m_leftBtnPressed,
-                                   .rightBtnPressed = m_rightBtnPressed}};
+            .data = MouseEventData{.event            = MouseEventType::Move,
+                                   .deltaX           = delta.x(),
+                                   .deltaY           = delta.y(),
+                                   .leftBtnPressing  = m_leftBtnPressing,
+                                   .rightBtnPressing = m_rightBtnPressing}};
     m_eventQueue.Push(std::move(e));
 }
 

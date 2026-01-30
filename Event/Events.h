@@ -42,10 +42,10 @@ enum class MouseBtnType
 
 struct MouseEventData
 {
-    MouseEventType event           = MouseEventType::None;
-    MouseBtnType   btn             = MouseBtnType::None;
-    int            deltaX          = 0;
-    int            deltaY          = 0;
-    bool           leftBtnPressed  = false;
-    bool           rightBtnPressed = false;
+    MouseEventType event            = MouseEventType::None;
+    MouseBtnType   btn              = MouseBtnType::None;
+    int            deltaX           = 0;
+    int            deltaY           = 0;
+    bool           leftBtnPressing  = false;
+    bool           rightBtnPressing = false;
 };
