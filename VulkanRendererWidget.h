@@ -28,7 +28,6 @@ class VulkanRendererWidget : public QWindow
 
   protected:
     void showEvent(QShowEvent* event) override;
-    void wheelEvent(QWheelEvent* event) override;
 
   private:
     void Initialize();
@@ -82,5 +81,5 @@ class VulkanRendererWidgetWrapper : public QWidget
 
     bool   m_leftBtnPressed  = false;
     bool   m_rightBtnPressed = false;
-    QPoint m_pressedPoint;
+    QPoint m_lastPoint       = QPoint(0, 0);
 };

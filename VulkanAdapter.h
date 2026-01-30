@@ -35,7 +35,7 @@ class VulkanAdapter
     void Uninitialize();
 
     bool IsReady();
-    void Tick(double delta);
+    void Tick(double elapsed);
 
   private:
     bool Check(VkResult result);
@@ -53,7 +53,7 @@ class VulkanAdapter
     bool InitVulkanDescriptorSetLayout();
     bool InitVulkanPipeline();
 
-    void PollInputEvents(double delta);
+    void PollInputEvents(double elapsed);
 
     bool UpdateSwapchain();
     void LoadModel(const Model& model);
@@ -139,6 +139,7 @@ class VulkanAdapter
 
     Model                   model;
     std::vector<BufferDesc> modelBuffers;
+    glm::vec3               modelRotation = glm::vec3(0);
 
     std::mutex renderLock;
     bool       updateSwapchain = false;

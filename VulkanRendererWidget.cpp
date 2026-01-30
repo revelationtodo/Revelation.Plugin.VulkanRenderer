@@ -61,11 +61,6 @@ void VulkanRendererWidget::showEvent(QShowEvent* event)
     }
 }
 
-void VulkanRendererWidget::wheelEvent(QWheelEvent* event)
-{
-    QWindow::wheelEvent(event);
-}
-
 void VulkanRendererWidget::Initialize()
 {
     InitWidget();
@@ -132,6 +127,18 @@ bool VulkanRendererWidgetWrapper::eventFilter(QObject* watched, QEvent* event)
     {
         switch (event->type())
         {
+            case QEvent::MouseButtonPress:
+                mousePressEvent(static_cast<QMouseEvent*>(event));
+                return true;
+            case QEvent::MouseButtonRelease:
+                mouseReleaseEvent(static_cast<QMouseEvent*>(event));
+                return true;
+            case QEvent::MouseButtonDblClick:
+                mouseDoubleClickEvent(static_cast<QMouseEvent*>(event));
+                return true;
+            case QEvent::MouseMove:
+                mouseMoveEvent(static_cast<QMouseEvent*>(event));
+                return true;
             case QEvent::Wheel:
                 wheelEvent(static_cast<QWheelEvent*>(event));
                 return true;
@@ -207,8 +214,6 @@ void VulkanRendererWidgetWrapper::dropEvent(QDropEvent* event)
 
 void VulkanRendererWidgetWrapper::mousePressEvent(QMouseEvent* event)
 {
-    m_pressedPoint = event->pos();
-
     MouseBtnType btnType = MouseBtnType::None;
     if (event->button() == Qt::LeftButton)
     {
@@ -275,7 +280,8 @@ void VulkanRendererWidgetWrapper::mouseDoubleClickEvent(QMouseEvent* event)
 void VulkanRendererWidgetWrapper::mouseMoveEvent(QMouseEvent* event)
 {
     QPoint pos   = event->pos();
-    QPoint delta = pos - m_pressedPoint;
+    QPoint delta = pos - m_lastPoint;
+    m_lastPoint  = pos;
 
     Event e{.type = EventType::MouseEvent,
             .data = MouseEventData{.event           = MouseEventType::Move,

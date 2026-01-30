@@ -131,11 +131,11 @@ bool VulkanAdapter::IsReady()
     return m_ready;
 }
 
-void VulkanAdapter::Tick(double delta)
+void VulkanAdapter::Tick(double elapsed)
 {
     std::lock_guard<std::mutex> guard(renderLock);
 
-    PollInputEvents(delta);
+    PollInputEvents(elapsed);
 
     if (updateSwapchain)
     {
@@ -159,9 +159,8 @@ void VulkanAdapter::Tick(double delta)
     shaderData.projection[1][1] *= -1;
     shaderData.view = glm::translate(glm::mat4(1), camPos);
 
-    // test
-    auto instancePos = glm::vec3(0.0f, 0.0f, 0.0f);
-    shaderData.model = glm::translate(glm::mat4(1.0f), instancePos);
+    auto instancePos = model.aabb.Center();
+    shaderData.model = glm::translate(glm::mat4(1.0f), instancePos) * glm::mat4_cast(glm::quat(modelRotation));
 
     memcpy(shaderDataBuffers[frameIndex].mapped, &shaderData, sizeof(ShaderData));
 
@@ -877,7 +876,7 @@ bool VulkanAdapter::InitVulkanPipeline()
     return true;
 }
 
-void VulkanAdapter::PollInputEvents(double delta)
+void VulkanAdapter::PollInputEvents(double elapsed)
 {
     while (auto eventOpt = m_targetWindow->PollEvent())
     {
@@ -901,7 +900,16 @@ void VulkanAdapter::PollInputEvents(double delta)
         else if (event.type == EventType::MouseEvent)
         {
             MouseEventData data = std::any_cast<MouseEventData>(event.data);
-            if (data.event == MouseEventType::Wheel)
+            if (data.event == MouseEventType::Move)
+            {
+                if (data.leftBtnPressed)
+                {
+                    const float sensitivity = 0.5f;
+                    modelRotation.x += data.deltaY * elapsed * sensitivity;
+                    modelRotation.y += data.deltaX * elapsed * sensitivity;
+                }
+            }
+            else if (data.event == MouseEventType::Wheel)
             {
                 glm::vec3   pivot   = model.aabb.Center();
                 glm::vec3   dir     = glm::normalize(camPos - pivot);
