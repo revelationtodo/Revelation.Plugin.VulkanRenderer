@@ -1089,10 +1089,9 @@ void VulkanAdapter::LoadModel(const Model& model)
 
     std::swap(modelBuffers, newModelBuffers);
 
-    glm::vec3 modelPos = model.aabb.Center();
-    camPosition        = modelPos + glm::vec3(0, 0, model.aabb.Length().z * 2.5f);
-    camRotation        = glm::quat(1, 0, 0, 0);
-    modelCenter        = modelPos;
+    modelCenter = model.aabb.Center();
+    camPosition = modelCenter + glm::vec3(0, 0, model.aabb.Length().z * 2.5f);
+    camRotation = glm::quat(1, 0, 0, 0);
 
     for (const BufferDesc& bufferDesc : newModelBuffers)
     {
