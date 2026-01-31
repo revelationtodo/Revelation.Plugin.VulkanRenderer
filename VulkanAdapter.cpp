@@ -157,7 +157,7 @@ void VulkanAdapter::Tick(double elapsed)
     float aspect          = (float)m_targetWindow->width() / m_targetWindow->height();
     shaderData.projection = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 3200.0f);
     shaderData.projection[1][1] *= -1;
-    shaderData.view = glm::translate(glm::mat4(1), camPosition) * glm::mat4_cast(glm::quat(camRotation));
+    shaderData.view = glm::lookAt(camPosition, modelCenter, glm::vec3(0, 1, 0));
 
     glm::vec3 modelPos = glm::vec3(0);
     shaderData.model   = glm::translate(glm::mat4(1.0f), modelPos);
@@ -904,9 +904,29 @@ void VulkanAdapter::PollInputEvents(double elapsed)
             {
                 if (data.leftBtnPressing)
                 {
-                    const float sensitivity = 0.5f;
-                    camRotation.x += data.deltaY * elapsed * sensitivity;
-                    camRotation.y += data.deltaX * elapsed * sensitivity;
+                    glm::vec3 offset = camPosition - modelCenter;
+                    float     radius = glm::length(offset);
+                    if (radius < 1e-6f)
+                    {
+                        radius = 1.0f;
+                    }
+
+                    float sensitivity = 0.005f;
+                    camRotation.y -= data.deltaX * sensitivity;
+                    camRotation.x += data.deltaY * sensitivity;
+
+                    constexpr float limit = glm::half_pi<float>() - 0.001f;
+                    camRotation.x         = std::clamp(camRotation.x, -limit, +limit);
+
+                    float pitch = camRotation.x;
+                    float yaw   = camRotation.y;
+
+                    glm::vec3 dir;
+                    dir.x = std::cosf(pitch) * std::sinf(yaw);
+                    dir.y = std::sinf(pitch);
+                    dir.z = std::cosf(pitch) * std::cosf(yaw);
+
+                    camPosition = modelCenter + dir * radius;
                 }
                 else if (data.rightBtnPressing)
                 {
@@ -1070,8 +1090,9 @@ void VulkanAdapter::LoadModel(const Model& model)
     std::swap(modelBuffers, newModelBuffers);
 
     glm::vec3 modelPos = model.aabb.Center();
-    camPosition        = modelPos + glm::vec3(0, 0, -model.aabb.Length().z * 2.5f);
-    camRotation        = glm::vec3(0);
+    camPosition        = modelPos + glm::vec3(0, 0, model.aabb.Length().z * 2.5f);
+    camRotation        = glm::quat(1, 0, 0, 0);
+    modelCenter        = modelPos;
 
     for (const BufferDesc& bufferDesc : newModelBuffers)
     {
