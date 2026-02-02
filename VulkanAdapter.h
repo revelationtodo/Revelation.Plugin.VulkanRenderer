@@ -106,7 +106,7 @@ class VulkanAdapter
     };
 
     std::vector<BufferDesc> modelBuffers;
-    glm::vec3               modelCenter = glm::vec3(0);
+    glm::vec3               navigation  = glm::vec3(0);
     glm::vec3               camPosition = glm::vec3(0);
     glm::quat               camRotation = glm::quat(1, 0, 0, 0);
 

@@ -157,7 +157,7 @@ void VulkanAdapter::Tick(double elapsed)
     float aspect          = (float)m_targetWindow->width() / m_targetWindow->height();
     shaderData.projection = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 3200.0f);
     shaderData.projection[1][1] *= -1;
-    shaderData.view = glm::lookAt(camPosition, modelCenter, glm::vec3(0, 1, 0));
+    shaderData.view = glm::lookAt(camPosition, navigation, glm::vec3(0, 1, 0));
 
     glm::vec3 modelPos = glm::vec3(0);
     shaderData.model   = glm::translate(glm::mat4(1.0f), modelPos);
@@ -902,52 +902,80 @@ void VulkanAdapter::PollInputEvents(double elapsed)
             MouseEventData data = std::any_cast<MouseEventData>(event.data);
             if (data.event == MouseEventType::Move)
             {
-                if (data.leftBtnPressing)
-                {
-                    glm::vec3 offset = camPosition - modelCenter;
-                    float     radius = glm::length(offset);
-                    if (radius < 1e-6f)
-                    {
-                        radius = 1.0f;
-                    }
+				if (data.leftBtnPressing)
+				{
+					glm::vec3 offset = camPosition - navigation;
+					float     radius = glm::length(offset);
+					if (radius < 1e-6f)
+					{
+						radius = 1.0f;
+					}
 
-                    float sensitivity = 0.005f;
-                    camRotation.y -= data.deltaX * sensitivity;
-                    camRotation.x += data.deltaY * sensitivity;
+					float sensitivity = 0.005f;
+					camRotation.y -= data.deltaX * sensitivity;
+					camRotation.x += data.deltaY * sensitivity;
 
-                    constexpr float limit = glm::half_pi<float>() - 0.001f;
-                    camRotation.x         = std::clamp(camRotation.x, -limit, +limit);
+					constexpr float limit = glm::half_pi<float>() - 0.001f;
+					camRotation.x = std::clamp(camRotation.x, -limit, +limit);
 
-                    float pitch = camRotation.x;
-                    float yaw   = camRotation.y;
+					float pitch = camRotation.x;
+					float yaw = camRotation.y;
 
-                    glm::vec3 dir;
-                    dir.x = std::cosf(pitch) * std::sinf(yaw);
-                    dir.y = std::sinf(pitch);
-                    dir.z = std::cosf(pitch) * std::cosf(yaw);
+					glm::vec3 dir;
+					dir.x = std::cosf(pitch) * std::sinf(yaw);
+					dir.y = std::sinf(pitch);
+					dir.z = std::cosf(pitch) * std::cosf(yaw);
 
-                    camPosition = modelCenter + dir * radius;
-                }
-                else if (data.rightBtnPressing)
-                {
-                    float       dist   = glm::length(camPosition);
-                    const float k      = 0.1;
-                    float       length = dist * k;
-                    camPosition += glm::vec3(data.deltaX * elapsed * length, -data.deltaY * elapsed * length, 0);
-                }
-            }
-            else if (data.event == MouseEventType::Wheel)
-            {
-                glm::vec3   dir     = glm::normalize(camPosition);
-                float       dist    = glm::length(camPosition);
-                const float minDist = 0.05f;
-                const float maxDist = 1e6f;
-                float       steps   = data.deltaY / 120.0f;
-                const float k       = 0.15f;
-                float       newDist = dist * std::pow(1.0f - k, steps);
-                newDist             = std::clamp(newDist, minDist, maxDist);
-                camPosition         = dir * newDist;
-            }
+					camPosition = navigation + dir * radius;
+				}
+				else if (data.rightBtnPressing)
+				{
+					glm::vec3 offset = camPosition - navigation;
+					float     radius = glm::length(offset);
+					if (radius < 1e-6f)
+					{
+						radius = 1.0f;
+					}
+
+					float pitch = camRotation.x;
+					float yaw = camRotation.y;
+
+					glm::vec3 dir;
+					dir.x = std::cosf(pitch) * std::sinf(yaw);
+					dir.y = std::sinf(pitch);
+					dir.z = std::cosf(pitch) * std::cosf(yaw);
+					dir = glm::normalize(dir);
+
+					glm::vec3 forward = -dir;
+					glm::vec3 worldUp = glm::vec3(0, 1, 0);
+
+					glm::vec3   right = glm::normalize(glm::cross(forward, worldUp));
+					glm::vec3   up = glm::normalize(glm::cross(right, forward));
+					const float k = 0.1f;
+					float       length = radius * k;
+
+					float dx = data.deltaX * elapsed * length;
+					float dy = data.deltaY * elapsed * length;
+
+					glm::vec3 pan = (-right * dx) + (up * dy);
+
+					camPosition += pan;
+					navigation += pan;
+				}
+			}
+			else if (data.event == MouseEventType::Wheel)
+			{
+				glm::vec3   gazeDir = camPosition - navigation;
+				glm::vec3   dir = glm::normalize(gazeDir);
+				float       dist = glm::length(gazeDir);
+				const float minDist = 0.05f;
+				const float maxDist = 1e6f;
+				float       steps = data.deltaY / 120.0f;
+				const float k = 0.15f;
+				float       newDist = dist * std::pow(1.0f - k, steps);
+				newDist = std::clamp(newDist, minDist, maxDist);
+				camPosition = navigation + dir * newDist;
+			}
         }
     }
 }
@@ -1089,8 +1117,8 @@ void VulkanAdapter::LoadModel(const Model& model)
 
     std::swap(modelBuffers, newModelBuffers);
 
-    modelCenter = model.aabb.Center();
-    camPosition = modelCenter + glm::vec3(0, 0, model.aabb.Length().z * 2.5f);
+    navigation = model.aabb.Center();
+    camPosition = navigation + glm::vec3(0, 0, model.aabb.Length().z * 2.5f);
     camRotation = glm::quat(1, 0, 0, 0);
 
     for (const BufferDesc& bufferDesc : newModelBuffers)
