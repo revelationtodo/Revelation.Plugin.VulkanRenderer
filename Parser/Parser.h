@@ -5,9 +5,9 @@
 
 struct Vertex
 {
-    glm::vec3 pos;
-    glm::vec3 normal;
-    glm::vec2 uv;
+    glm::vec3 pos    = glm::vec3(0);
+    glm::vec3 normal = glm::vec3(0);
+    glm::vec2 uv     = glm::vec2(0);
 };
 
 using Index = uint32_t;
@@ -32,6 +32,8 @@ struct Shape
 {
     std::vector<Vertex> vertices;
     std::vector<Index>  indices;
+
+    std::string diffuse = "";
 
     AxisAlignedBox aabb;
 };

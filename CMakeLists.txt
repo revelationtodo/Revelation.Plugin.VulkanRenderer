@@ -19,7 +19,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_library(Slang_LIBRARY NAMES slang HINTS "$ENV{VULKAN_SDK}/lib" REQUIRED)
-find_package(ktx CONFIG REQUIRED)
 find_package(assimp CONFIG REQUIRED)
 
 if(WIN32)
@@ -74,7 +73,7 @@ endif()
 
 add_definitions(-D_CRT_SECURE_NO_WARNINGS -DVK_NO_PROTOTYPES)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE KTX::ktx assimp::assimp ${Slang_LIBRARY})
+target_link_libraries(${PROJECT_NAME} PRIVATE assimp::assimp ${Slang_LIBRARY})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Widgets)
 target_link_libraries(${PROJECT_NAME} PRIVATE FluUtils)
@@ -83,7 +82,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE FluControls)
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../Include)
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../FluentUI/FluControls)
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../FluentUI/FluUtils)
-
 
 if(CMAKE_CONFIGURATION_TYPES)
     add_custom_target(ShaderResourceCopy

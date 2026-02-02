@@ -7,6 +7,9 @@
 #define VMA_IMPLEMENTATION
 #include <vma/vk_mem_alloc.h>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
 VulkanAdapter::VulkanAdapter(VulkanRendererWidget* targetWindow)
     : m_targetWindow(targetWindow)
 {
@@ -111,7 +114,12 @@ void VulkanAdapter::Uninitialize()
         vmaDestroyBuffer(allocator, bufferDesc.buffer, bufferDesc.allocation);
     }
 
-    // TODO: destroy textures
+    for (const Texture& texture : textures)
+    {
+        vkDestroyImageView(device, texture.view, nullptr);
+        vkDestroySampler(device, texture.sampler, nullptr);
+        vmaDestroyImage(allocator, texture.image, texture.allocation);
+    }
 
     vkDestroyDescriptorSetLayout(device, descriptorSetLayoutTex, nullptr);
     vkDestroyDescriptorPool(device, descriptorPool, nullptr);
@@ -154,15 +162,18 @@ void VulkanAdapter::Tick(double elapsed)
     }
 
     // update shader data
-    float aspect          = (float)m_targetWindow->width() / m_targetWindow->height();
-    shaderData.projection = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 3200.0f);
-    shaderData.projection[1][1] *= -1;
-    shaderData.view = glm::lookAt(camPosition, navigation, glm::vec3(0, 1, 0));
-
+    ShaderData sd;
+    float      aspect = (float)m_targetWindow->width() / m_targetWindow->height();
+    sd.projection     = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 3200.0f);
+    sd.projection[1][1] *= -1;
+    sd.view            = glm::lookAt(camPosition, navigation, glm::vec3(0, 1, 0));
     glm::vec3 modelPos = glm::vec3(0);
-    shaderData.model   = glm::translate(glm::mat4(1.0f), modelPos);
+    sd.model           = glm::translate(glm::mat4(1.0f), modelPos);
+    sd.cameraPos       = glm::vec4(camPosition, 1.0f);
+    memcpy(shaderDataBuffers[frameIndex].mapped, &sd, sizeof(ShaderData));
 
-    memcpy(shaderDataBuffers[frameIndex].mapped, &shaderData, sizeof(ShaderData));
+    PushConstant pushConstant;
+    pushConstant.shaderDataAddr = shaderDataBuffers[frameIndex].deviceAddress;
 
     // command buffers
     VkCommandBuffer commandBuffer = commandBuffers[frameIndex];
@@ -253,17 +264,16 @@ void VulkanAdapter::Tick(double elapsed)
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
                             0, 1, &descriptorSetTex, 0, nullptr);
 
-    for (const BufferDesc& bufferDesc : modelBuffers)
+    assert(modelBuffers.size() == textureIndexes.size());
+    for (int i = 0; i < modelBuffers.size(); ++i)
     {
-        VkDeviceSize vOffset = 0;
+        pushConstant.textureIndex = textureIndexes[i];
+
+        const BufferDesc& bufferDesc = modelBuffers[i];
+        VkDeviceSize      vOffset    = 0;
         vkCmdBindVertexBuffers(commandBuffer, 0, 1, &bufferDesc.buffer, &vOffset);
         vkCmdBindIndexBuffer(commandBuffer, bufferDesc.buffer, bufferDesc.offsetOfIndexBuffer, VK_INDEX_TYPE_UINT32);
-        vkCmdPushConstants(commandBuffer,
-                           pipelineLayout,
-                           VK_SHADER_STAGE_VERTEX_BIT,
-                           0,
-                           sizeof(VkDeviceAddress),
-                           &shaderDataBuffers[frameIndex].deviceAddress);
+        vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstant), &pushConstant);
         vkCmdDrawIndexed(commandBuffer, bufferDesc.indexCount, 1, 0, 0, 0);
     }
 
@@ -769,7 +779,7 @@ bool VulkanAdapter::InitVulkanPipeline()
 {
     VkPushConstantRange pushConstantRange{
         .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-        .size       = sizeof(VkDeviceAddress)};
+        .size       = sizeof(PushConstant)};
     VkPipelineLayoutCreateInfo pipelineLayoutCI{
         .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount         = 1,
@@ -902,80 +912,80 @@ void VulkanAdapter::PollInputEvents(double elapsed)
             MouseEventData data = std::any_cast<MouseEventData>(event.data);
             if (data.event == MouseEventType::Move)
             {
-				if (data.leftBtnPressing)
-				{
-					glm::vec3 offset = camPosition - navigation;
-					float     radius = glm::length(offset);
-					if (radius < 1e-6f)
-					{
-						radius = 1.0f;
-					}
+                if (data.leftBtnPressing)
+                {
+                    glm::vec3 offset = camPosition - navigation;
+                    float     radius = glm::length(offset);
+                    if (radius < 1e-6f)
+                    {
+                        radius = 1.0f;
+                    }
 
-					float sensitivity = 0.005f;
-					camRotation.y -= data.deltaX * sensitivity;
-					camRotation.x += data.deltaY * sensitivity;
+                    float sensitivity = 0.005f;
+                    camRotation.y -= data.deltaX * sensitivity;
+                    camRotation.x += data.deltaY * sensitivity;
 
-					constexpr float limit = glm::half_pi<float>() - 0.001f;
-					camRotation.x = std::clamp(camRotation.x, -limit, +limit);
+                    constexpr float limit = glm::half_pi<float>() - 0.001f;
+                    camRotation.x         = std::clamp(camRotation.x, -limit, +limit);
 
-					float pitch = camRotation.x;
-					float yaw = camRotation.y;
+                    float pitch = camRotation.x;
+                    float yaw   = camRotation.y;
 
-					glm::vec3 dir;
-					dir.x = std::cosf(pitch) * std::sinf(yaw);
-					dir.y = std::sinf(pitch);
-					dir.z = std::cosf(pitch) * std::cosf(yaw);
+                    glm::vec3 dir;
+                    dir.x = std::cosf(pitch) * std::sinf(yaw);
+                    dir.y = std::sinf(pitch);
+                    dir.z = std::cosf(pitch) * std::cosf(yaw);
 
-					camPosition = navigation + dir * radius;
-				}
-				else if (data.rightBtnPressing)
-				{
-					glm::vec3 offset = camPosition - navigation;
-					float     radius = glm::length(offset);
-					if (radius < 1e-6f)
-					{
-						radius = 1.0f;
-					}
+                    camPosition = navigation + dir * radius;
+                }
+                else if (data.rightBtnPressing)
+                {
+                    glm::vec3 offset = camPosition - navigation;
+                    float     radius = glm::length(offset);
+                    if (radius < 1e-6f)
+                    {
+                        radius = 1.0f;
+                    }
 
-					float pitch = camRotation.x;
-					float yaw = camRotation.y;
+                    float pitch = camRotation.x;
+                    float yaw   = camRotation.y;
 
-					glm::vec3 dir;
-					dir.x = std::cosf(pitch) * std::sinf(yaw);
-					dir.y = std::sinf(pitch);
-					dir.z = std::cosf(pitch) * std::cosf(yaw);
-					dir = glm::normalize(dir);
+                    glm::vec3 dir;
+                    dir.x = std::cosf(pitch) * std::sinf(yaw);
+                    dir.y = std::sinf(pitch);
+                    dir.z = std::cosf(pitch) * std::cosf(yaw);
+                    dir   = glm::normalize(dir);
 
-					glm::vec3 forward = -dir;
-					glm::vec3 worldUp = glm::vec3(0, 1, 0);
+                    glm::vec3 forward = -dir;
+                    glm::vec3 worldUp = glm::vec3(0, 1, 0);
 
-					glm::vec3   right = glm::normalize(glm::cross(forward, worldUp));
-					glm::vec3   up = glm::normalize(glm::cross(right, forward));
-					const float k = 0.1f;
-					float       length = radius * k;
+                    glm::vec3   right  = glm::normalize(glm::cross(forward, worldUp));
+                    glm::vec3   up     = glm::normalize(glm::cross(right, forward));
+                    const float k      = 0.1f;
+                    float       length = radius * k;
 
-					float dx = data.deltaX * elapsed * length;
-					float dy = data.deltaY * elapsed * length;
+                    float dx = data.deltaX * elapsed * length;
+                    float dy = data.deltaY * elapsed * length;
 
-					glm::vec3 pan = (-right * dx) + (up * dy);
+                    glm::vec3 pan = (-right * dx) + (up * dy);
 
-					camPosition += pan;
-					navigation += pan;
-				}
-			}
-			else if (data.event == MouseEventType::Wheel)
-			{
-				glm::vec3   gazeDir = camPosition - navigation;
-				glm::vec3   dir = glm::normalize(gazeDir);
-				float       dist = glm::length(gazeDir);
-				const float minDist = 0.05f;
-				const float maxDist = 1e6f;
-				float       steps = data.deltaY / 120.0f;
-				const float k = 0.15f;
-				float       newDist = dist * std::pow(1.0f - k, steps);
-				newDist = std::clamp(newDist, minDist, maxDist);
-				camPosition = navigation + dir * newDist;
-			}
+                    camPosition += pan;
+                    navigation += pan;
+                }
+            }
+            else if (data.event == MouseEventType::Wheel)
+            {
+                glm::vec3   gazeDir = camPosition - navigation;
+                glm::vec3   dir     = glm::normalize(gazeDir);
+                float       dist    = glm::length(gazeDir);
+                const float minDist = 0.05f;
+                const float maxDist = 1e6f;
+                float       steps   = data.deltaY / 120.0f;
+                const float k       = 0.15f;
+                float       newDist = dist * std::pow(1.0f - k, steps);
+                newDist             = std::clamp(newDist, minDist, maxDist);
+                camPosition         = navigation + dir * newDist;
+            }
         }
     }
 }
@@ -1083,46 +1093,291 @@ void VulkanAdapter::LoadModel(const Model& model)
 
     vkDeviceWaitIdle(device);
 
-    std::vector<BufferDesc> newModelBuffers;
+    textures.clear();
+
+    std::vector<BufferDesc>            newModelBuffers;
+    std::vector<Texture>               newTextures;
+    std::vector<int>                   newIndexes;
+    std::vector<VkDescriptorImageInfo> textureDescriptors;
     for (const Shape& shape : model.shapes)
     {
-        VkDeviceSize       vbSize = sizeof(Vertex) * shape.vertices.size();
-        VkDeviceSize       ibSize = sizeof(Index) * shape.indices.size();
-        VkBufferCreateInfo bufferCI{
-            .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            .size  = vbSize + ibSize,
-            .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-                     VK_BUFFER_USAGE_INDEX_BUFFER_BIT};
-        VmaAllocationCreateInfo bufferAllocCI{
-            .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-                     VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT |
-                     VMA_ALLOCATION_CREATE_MAPPED_BIT,
-            .usage = VMA_MEMORY_USAGE_AUTO};
-
-        BufferDesc bufferDesc;
-        if (Check(vmaCreateBuffer(allocator, &bufferCI, &bufferAllocCI, &bufferDesc.buffer, &bufferDesc.allocation, nullptr)))
+        // load shape
+        if (!LoadShape(shape, newModelBuffers))
         {
-            bufferDesc.offsetOfIndexBuffer = vbSize;
-            bufferDesc.indexCount          = shape.indices.size();
-
-            void* mapped = nullptr;
-            vmaMapMemory(allocator, bufferDesc.allocation, &mapped);
-            memcpy(mapped, shape.vertices.data(), vbSize);
-            memcpy(((char*)mapped) + vbSize, shape.indices.data(), ibSize);
-            vmaUnmapMemory(allocator, bufferDesc.allocation);
-
-            newModelBuffers.emplace_back(std::move(bufferDesc));
+            continue;
         }
+
+        // load diffuse texture
+        if (!LoadTexture(shape.diffuse, newTextures))
+        {
+            newIndexes.push_back(-1);
+            continue;
+        }
+        newIndexes.push_back(textureDescriptors.size());
+        textureDescriptors.emplace_back(VkDescriptorImageInfo{
+            .sampler     = newTextures.back().sampler,
+            .imageView   = newTextures.back().view,
+            .imageLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL});
     }
 
-    std::swap(modelBuffers, newModelBuffers);
-
-    navigation = model.aabb.Center();
+    navigation  = model.aabb.Center();
     camPosition = navigation + glm::vec3(0, 0, model.aabb.Length().z * 2.5f);
     camRotation = glm::quat(1, 0, 0, 0);
 
+    // swap shape buffers
+    std::swap(modelBuffers, newModelBuffers);
     for (const BufferDesc& bufferDesc : newModelBuffers)
     {
         vmaDestroyBuffer(allocator, bufferDesc.buffer, bufferDesc.allocation);
     }
+
+    // swap texture buffers
+    textureIndexes = newIndexes;
+    std::swap(textures, newTextures);
+    for (const Texture& texture : newTextures)
+    {
+        vkDestroyImageView(device, texture.view, nullptr);
+        vkDestroySampler(device, texture.sampler, nullptr);
+        vmaDestroyImage(allocator, texture.image, texture.allocation);
+    }
+
+    // update descriptor set
+    VkWriteDescriptorSet writeDescSet{
+        .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet          = descriptorSetTex,
+        .dstBinding      = 0,
+        .descriptorCount = static_cast<uint32_t>(textureDescriptors.size()),
+        .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .pImageInfo      = textureDescriptors.data()};
+    vkUpdateDescriptorSets(device, 1, &writeDescSet, 0, nullptr);
+}
+
+bool VulkanAdapter::LoadShape(const Shape& shape, std::vector<BufferDesc>& buffers)
+{
+    BufferDesc         bufferDesc;
+    VkDeviceSize       vbSize = sizeof(Vertex) * shape.vertices.size();
+    VkDeviceSize       ibSize = sizeof(Index) * shape.indices.size();
+    VkBufferCreateInfo bufferCI{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size  = vbSize + ibSize,
+        .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+                 VK_BUFFER_USAGE_INDEX_BUFFER_BIT};
+    VmaAllocationCreateInfo bufferAllocCI{
+        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                 VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT |
+                 VMA_ALLOCATION_CREATE_MAPPED_BIT,
+        .usage = VMA_MEMORY_USAGE_AUTO};
+    if (Check(vmaCreateBuffer(allocator, &bufferCI, &bufferAllocCI, &bufferDesc.buffer, &bufferDesc.allocation, nullptr)))
+    {
+        bufferDesc.offsetOfIndexBuffer = vbSize;
+        bufferDesc.indexCount          = shape.indices.size();
+
+        void* mapped = nullptr;
+        vmaMapMemory(allocator, bufferDesc.allocation, &mapped);
+        memcpy(mapped, shape.vertices.data(), vbSize);
+        memcpy(((char*)mapped) + vbSize, shape.indices.data(), ibSize);
+        vmaUnmapMemory(allocator, bufferDesc.allocation);
+
+        buffers.emplace_back(std::move(bufferDesc));
+        return true;
+    }
+
+    return false;
+}
+
+bool VulkanAdapter::LoadTexture(const std::string& texPath, std::vector<Texture>& textures)
+{
+    if (texPath.empty() || !std::filesystem::exists(texPath))
+    {
+        return false;
+    }
+
+    stbi_set_flip_vertically_on_load(true);
+    int      width = 0, height = 0, channels = 0;
+    stbi_uc* data = stbi_load(texPath.c_str(), &width, &height, &channels, STBI_rgb_alpha);
+    if (width == 0 || height == 0 || nullptr == data)
+    {
+        return false;
+    }
+
+    channels                  = 4;
+    size_t               size = width * height * channels;
+    std::vector<uint8_t> pixels(data, data + size);
+    stbi_image_free(data);
+
+    Texture                 tex;
+    VkImageCreateInfo       texImgCI{.sType       = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+                                     .imageType   = VK_IMAGE_TYPE_2D,
+                                     .format      = VK_FORMAT_R8G8B8A8_UNORM,
+                                     .extent      = {.width  = (uint32_t)width,
+                                                     .height = (uint32_t)height,
+                                                     .depth  = 1},
+                                     .mipLevels   = 1,
+                                     .arrayLayers = 1,
+                                     .samples     = VK_SAMPLE_COUNT_1_BIT,
+                                     .tiling      = VK_IMAGE_TILING_OPTIMAL,
+                                     .usage       = VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+                                        VK_IMAGE_USAGE_SAMPLED_BIT,
+                                     .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED};
+    VmaAllocationCreateInfo texImageAllocCI{.usage = VMA_MEMORY_USAGE_AUTO};
+    if (!Check(vmaCreateImage(allocator, &texImgCI, &texImageAllocCI, &tex.image, &tex.allocation, nullptr)))
+    {
+        return false;
+    }
+
+    VkImageViewCreateInfo texViewCI{
+        .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image            = tex.image,
+        .viewType         = VK_IMAGE_VIEW_TYPE_2D,
+        .format           = texImgCI.format,
+        .subresourceRange = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                             .levelCount = 1,
+                             .layerCount = 1}};
+    if (!Check(vkCreateImageView(device, &texViewCI, nullptr, &tex.view)))
+    {
+        return false;
+    }
+
+    // upload
+    VkBuffer           imgSrcBuffer     = VK_NULL_HANDLE;
+    VmaAllocation      imgSrcAllocation = VK_NULL_HANDLE;
+    VkBufferCreateInfo imgSrcBufferCI{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size  = (uint32_t)size,
+        .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT};
+    VmaAllocationCreateInfo imgSrcAllocCI{
+        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                 VMA_ALLOCATION_CREATE_MAPPED_BIT,
+        .usage = VMA_MEMORY_USAGE_AUTO};
+    if (!Check(vmaCreateBuffer(allocator, &imgSrcBufferCI, &imgSrcAllocCI, &imgSrcBuffer, &imgSrcAllocation, nullptr)))
+    {
+        return false;
+    }
+
+    void* imgSrcBufferPtr = nullptr;
+    if (!Check(vmaMapMemory(allocator, imgSrcAllocation, &imgSrcBufferPtr)))
+    {
+        return false;
+    }
+    memcpy(imgSrcBufferPtr, pixels.data(), size);
+
+    VkFence           fenceOneTime = VK_NULL_HANDLE;
+    VkFenceCreateInfo fenceOneTimeCI{
+        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    if (!Check(vkCreateFence(device, &fenceOneTimeCI, nullptr, &fenceOneTime)))
+    {
+        return false;
+    }
+
+    VkCommandBuffer             cbOneTime = VK_NULL_HANDLE;
+    VkCommandBufferAllocateInfo cbOneTimeCI{
+        .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool        = commandPool,
+        .commandBufferCount = 1};
+    if (!Check(vkAllocateCommandBuffers(device, &cbOneTimeCI, &cbOneTime)))
+    {
+        return false;
+    }
+
+    VkCommandBufferBeginInfo cbOneTimeBI{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
+    if (!Check(vkBeginCommandBuffer(cbOneTime, &cbOneTimeBI)))
+    {
+        return false;
+    }
+
+    VkImageMemoryBarrier2 barrierTexImage{
+        .sType         = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .srcStageMask  = VK_PIPELINE_STAGE_2_NONE,
+        .srcAccessMask = VK_ACCESS_2_NONE,
+        .dstStageMask  = VK_PIPELINE_STAGE_TRANSFER_BIT,
+        .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+        .oldLayout     = VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .image         = tex.image,
+        .subresourceRange{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                          .levelCount = 1,
+                          .layerCount = 1}};
+    VkDependencyInfo barrierTexInfo{
+        .sType                   = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+        .imageMemoryBarrierCount = 1,
+        .pImageMemoryBarriers    = &barrierTexImage};
+    vkCmdPipelineBarrier2(cbOneTime, &barrierTexInfo);
+
+    std::vector<VkBufferImageCopy> copyRegions;
+    int                            levels = 1;
+    for (int i = 0; i < levels; ++i)
+    {
+        VkDeviceAddress mipOffset = 0;
+
+        VkBufferImageCopy bufferImageCopy{
+            .bufferOffset = mipOffset,
+            .imageSubresource{
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .mipLevel   = (uint32_t)i,
+                .layerCount = 1},
+            .imageExtent{.width  = (uint32_t)width >> i,
+                         .height = (uint32_t)height >> i,
+                         .depth  = 1}};
+
+        copyRegions.emplace_back(std::move(bufferImageCopy));
+    }
+    VkImageLayout layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    vkCmdCopyBufferToImage(cbOneTime, imgSrcBuffer, tex.image, layout, (uint32_t)copyRegions.size(), copyRegions.data());
+
+    VkImageMemoryBarrier2 barrierTexRead{
+        .sType         = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .srcStageMask  = VK_PIPELINE_STAGE_TRANSFER_BIT,
+        .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+        .dstStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+        .oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .newLayout     = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
+        .image         = tex.image,
+        .subresourceRange{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                          .levelCount = 1,
+                          .layerCount = 1}};
+    barrierTexInfo.pImageMemoryBarriers = &barrierTexRead;
+    vkCmdPipelineBarrier2(cbOneTime, &barrierTexInfo);
+
+    if (!Check(vkEndCommandBuffer(cbOneTime)))
+    {
+        return false;
+    }
+
+    VkSubmitInfo oneTimeSI{
+        .sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers    = &cbOneTime};
+    if (!Check(vkQueueSubmit(queue, 1, &oneTimeSI, fenceOneTime)))
+    {
+        return false;
+    }
+
+    if (!Check(vkWaitForFences(device, 1, &fenceOneTime, VK_TRUE, UINT64_MAX)))
+    {
+        return false;
+    }
+
+    vkDestroyFence(device, fenceOneTime, nullptr);
+    vmaUnmapMemory(allocator, imgSrcAllocation);
+    vmaDestroyBuffer(allocator, imgSrcBuffer, imgSrcAllocation);
+
+    // sampler
+    VkSamplerCreateInfo samplerCI{
+        .sType            = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .magFilter        = VK_FILTER_LINEAR,
+        .minFilter        = VK_FILTER_LINEAR,
+        .mipmapMode       = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+        .anisotropyEnable = VK_TRUE,
+        .maxAnisotropy    = 8.0f,
+        .maxLod           = 1};
+    if (!Check(vkCreateSampler(device, &samplerCI, nullptr, &tex.sampler)))
+    {
+        return false;
+    }
+
+    textures.emplace_back(std::move(tex));
+    return true;
 }

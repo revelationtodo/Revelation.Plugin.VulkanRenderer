@@ -5,6 +5,44 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <filesystem>
+
+static std::string GetDiffuseTexRef(aiMaterial* mat)
+{
+    aiString texPath;
+
+    if (mat->GetTextureCount(aiTextureType_BASE_COLOR) > 0 &&
+        mat->GetTexture(aiTextureType_BASE_COLOR, 0, &texPath) == AI_SUCCESS)
+    {
+        return texPath.C_Str();
+    }
+
+    if (mat->GetTextureCount(aiTextureType_DIFFUSE) > 0 &&
+        mat->GetTexture(aiTextureType_DIFFUSE, 0, &texPath) == AI_SUCCESS)
+    {
+        return texPath.C_Str();
+    }
+
+    return "";
+}
+
+static std::string JoinPath(const std::string& dir, const std::string& rel)
+{
+    if (rel.empty() || rel[0] == '*')
+    {
+        return rel;
+    }
+
+    std::filesystem::path texPath(rel);
+    if (texPath.is_absolute())
+    {
+        return std::filesystem::weakly_canonical(texPath).string();
+    }
+
+    std::filesystem::path base(dir);
+    std::filesystem::path full = base / texPath;
+    return std::filesystem::weakly_canonical(full).string();
+}
 
 Parser::Parser()
 {
@@ -120,6 +158,11 @@ bool Parser::Parse(const std::string& file, Model& model)
             model.aabb.min = glm::min(model.aabb.min, shape.aabb.min);
             model.aabb.max = glm::max(model.aabb.max, shape.aabb.max);
         }
+
+        auto* mat     = scene->mMaterials[mesh->mMaterialIndex];
+        shape.diffuse = GetDiffuseTexRef(mat);
+        std::filesystem::path filePath(file);
+        shape.diffuse = JoinPath(filePath.parent_path().string(), shape.diffuse);
 
         model.shapes.push_back(std::move(shape));
     }

@@ -17,13 +17,56 @@
 #include "slang/slang-com-ptr.h"
 #include "slang/slang.h"
 
-#include <ktx.h>
-
 #include "Parser/Parser.h"
 
 class VulkanRendererWidget;
 
 constexpr uint32_t maxFramesInFlight{2};
+
+struct ShaderData
+{
+    glm::mat4 projection = glm::mat4(1);
+    glm::mat4 view       = glm::mat4(1);
+    glm::mat4 model      = glm::mat4(1);
+    glm::vec4 lightPos   = glm::vec4(0.0f, -1000.0f, 1000.0f, 0.0f);
+    glm::vec4 cameraPos  = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+
+    int textureIndex = -1;
+};
+
+struct PushConstant
+{
+    uint64_t shaderDataAddr = 0;
+    int      textureIndex   = -1;
+};
+
+struct ShaderDataBuffer
+{
+    VmaAllocation   allocation    = VK_NULL_HANDLE;
+    VkBuffer        buffer        = VK_NULL_HANDLE;
+    VkDeviceAddress deviceAddress = 0;
+    void*           mapped        = nullptr;
+};
+
+struct BufferDesc
+{
+    VkBuffer      buffer     = VK_NULL_HANDLE;
+    VmaAllocation allocation = VK_NULL_HANDLE;
+
+    VkDeviceSize offsetOfIndexBuffer = 0;
+    Index        indexCount          = 0;
+};
+
+struct Texture
+{
+    VmaAllocation allocation = VK_NULL_HANDLE;
+    VkImage       image      = VK_NULL_HANDLE;
+    VkImageView   view       = VK_NULL_HANDLE;
+    VkSampler     sampler    = VK_NULL_HANDLE;
+
+    uint32_t width  = 0;
+    uint32_t height = 0;
+};
 
 class VulkanAdapter
 {
@@ -57,6 +100,8 @@ class VulkanAdapter
 
     bool UpdateSwapchain();
     void LoadModel(const Model& model);
+    bool LoadShape(const Shape& shape, std::vector<BufferDesc>& buffers);
+    bool LoadTexture(const std::string& texPath, std::vector<Texture>& textures);
 
   private:
     VulkanRendererWidget* m_targetWindow = nullptr;
@@ -66,29 +111,6 @@ class VulkanAdapter
 
     //////////////////////////////////////////////////////////////////////////
     // Vulkan related
-    struct ShaderData
-    {
-        glm::mat4 projection;
-        glm::mat4 view;
-        glm::mat4 model;
-        glm::vec4 lightPos{0.0f, -10.0f, 10.0f, 0.0f};
-    };
-
-    struct ShaderDataBuffer
-    {
-        VmaAllocation   allocation    = VK_NULL_HANDLE;
-        VkBuffer        buffer        = VK_NULL_HANDLE;
-        VkDeviceAddress deviceAddress = {};
-        void*           mapped        = nullptr;
-    };
-
-    struct Vertex
-    {
-        glm::vec3 pos;
-        glm::vec3 normal;
-        glm::vec2 uv;
-    };
-
     using ShaderDataBuffers   = std::array<ShaderDataBuffer, maxFramesInFlight>;
     using Fences              = std::array<VkFence, maxFramesInFlight>;
     using PresentSemaphores   = std::array<VkSemaphore, maxFramesInFlight>;
@@ -96,19 +118,13 @@ class VulkanAdapter
     using CommandBuffers      = std::array<VkCommandBuffer, maxFramesInFlight>;
     using SlangGlobalSession  = Slang::ComPtr<slang::IGlobalSession>;
 
-    struct BufferDesc
-    {
-        VkBuffer      buffer     = VK_NULL_HANDLE;
-        VmaAllocation allocation = VK_NULL_HANDLE;
-
-        VkDeviceSize offsetOfIndexBuffer = 0;
-        Index        indexCount          = 0;
-    };
-
     std::vector<BufferDesc> modelBuffers;
-    glm::vec3               navigation  = glm::vec3(0);
-    glm::vec3               camPosition = glm::vec3(0);
-    glm::quat               camRotation = glm::quat(1, 0, 0, 0);
+    std::vector<Texture>    textures;
+    std::vector<int>        textureIndexes;
+
+    glm::vec3 navigation = glm::vec3(0);
+    glm::vec3 camPosition = glm::vec3(0);
+    glm::quat camRotation = glm::quat(1, 0, 0, 0);
 
     uint32_t   imageIndex = 0;
     uint32_t   frameIndex = 0;
@@ -128,7 +144,6 @@ class VulkanAdapter
     VkImage                  depthImage           = VK_NULL_HANDLE;
     VmaAllocation            depthImageAllocation = VK_NULL_HANDLE;
     VkImageView              depthImageView       = VK_NULL_HANDLE;
-    ShaderData               shaderData;
     ShaderDataBuffers        shaderDataBuffers;
     VkShaderModule           shaderModule = VK_NULL_HANDLE;
     SlangGlobalSession       slangGlobalSession;
