@@ -61,15 +61,14 @@ static bool LoadTexture(const std::string& texPath, const aiScene* scene, Textur
         const aiTexture* aiTex = scene->mTextures[index];
         if (aiTex->mHeight == 0) // compressed
         {
-            int      channels = 0;
-            stbi_uc* loaded   = stbi_load_from_memory(reinterpret_cast<const uint8_t*>(aiTex->pcData), aiTex->mWidth, &tex.width, &tex.height, &tex.channels, STBI_rgb_alpha);
+            stbi_uc* loaded = stbi_load_from_memory(reinterpret_cast<const uint8_t*>(aiTex->pcData), aiTex->mWidth, &tex.width, &tex.height, &tex.channels, STBI_rgb_alpha);
             if (!loaded || tex.width == 0 || tex.height == 0)
             {
                 return false;
             }
 
-            channels    = 4;
-            size_t size = size_t(tex.width) * tex.height * channels;
+            tex.channels = 4;
+            size_t size  = size_t(tex.width) * tex.height * tex.channels;
             tex.buffer.assign(loaded, loaded + size);
             stbi_image_free(loaded);
         }
@@ -84,15 +83,14 @@ static bool LoadTexture(const std::string& texPath, const aiScene* scene, Textur
     }
     else // regular image file
     {
-        int      channels = 0;
-        stbi_uc* loaded   = stbi_load(texPath.c_str(), &tex.width, &tex.height, &tex.channels, STBI_rgb_alpha);
+        stbi_uc* loaded = stbi_load(texPath.c_str(), &tex.width, &tex.height, &tex.channels, STBI_rgb_alpha);
         if (!loaded || tex.width == 0 || tex.height == 0)
         {
             return false;
         }
 
-        channels    = 4;
-        size_t size = size_t(tex.width) * tex.width * channels;
+        tex.channels = 4;
+        size_t size  = size_t(tex.width) * tex.width * tex.channels;
         tex.buffer.assign(loaded, loaded + size);
         stbi_image_free(loaded);
     }
