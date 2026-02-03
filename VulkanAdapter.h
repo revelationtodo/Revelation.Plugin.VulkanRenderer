@@ -36,7 +36,8 @@ struct alignas(16) PushConstant
     uint64_t shaderDataAddr = 0;
     uint64_t _pad0          = 0;
 
-    glm::mat4 model        = glm::mat4(1);
+    glm::mat4 model        = glm::mat4(1.0f);
+    glm::vec4 diffuseColor = glm::vec4(1.0f);
     int       textureIndex = -1;
 };
 
@@ -104,8 +105,8 @@ class VulkanAdapter
 
   private:
     VulkanRendererWidget* m_targetWindow = nullptr;
-    Parser                m_parser;
 
+    Parser                m_parser;
     bool m_ready = false;
 
     //////////////////////////////////////////////////////////////////////////
@@ -120,6 +121,7 @@ class VulkanAdapter
     std::vector<BufferDesc>      modelBuffers;
     std::vector<glm::mat4>       modelMatrices;
     std::vector<TextureResource> textures;
+    std::vector<glm::vec4>       diffuseColors;
     std::vector<int>             textureIndexes;
 
     glm::vec3 navigation  = glm::vec3(0);

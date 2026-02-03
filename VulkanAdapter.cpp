@@ -264,6 +264,7 @@ void VulkanAdapter::Tick(double elapsed)
     {
         pushConstant.model        = modelMatrices[i];
         pushConstant.textureIndex = textureIndexes[i];
+        pushConstant.diffuseColor = diffuseColors[i];
 
         const BufferDesc& bufferDesc = modelBuffers[i];
         VkDeviceSize      vOffset    = 0;
@@ -1111,6 +1112,7 @@ void VulkanAdapter::LoadNode(const Node& node)
     std::vector<glm::mat4>             newModelMatrices;
     std::vector<TextureResource>       newTextures;
     std::vector<int>                   newIndexes;
+    std::vector<glm::vec4>             newDiffuseColors;
     std::vector<VkDescriptorImageInfo> textureDescriptors;
 
     std::unordered_map<std::string, int> texIndexCache;
@@ -1118,28 +1120,26 @@ void VulkanAdapter::LoadNode(const Node& node)
 
     for (const Mesh* mesh : meshes)
     {
-        const Mesh& shape = *mesh;
-
-        if (!LoadMesh(shape, newModelBuffers))
+        if (!LoadMesh(*mesh, newModelBuffers))
         {
             continue;
         }
 
-        newModelMatrices.push_back(shape.trans);
+        newModelMatrices.push_back(mesh->trans);
         int texIndex = -1;
-        if (!shape.diffuse.id.empty())
+        if (!mesh->material.diffuseTexture.id.empty())
         {
-            auto it = texIndexCache.find(shape.diffuse.id);
+            auto it = texIndexCache.find(mesh->material.diffuseTexture.id);
             if (it != texIndexCache.end())
             {
                 texIndex = it->second;
             }
             else
             {
-                if (LoadTexture(shape.diffuse, newTextures))
+                if (LoadTexture(mesh->material.diffuseTexture, newTextures))
                 {
                     texIndex = static_cast<int>(textureDescriptors.size());
-                    texIndexCache.emplace(shape.diffuse.id, texIndex);
+                    texIndexCache.emplace(mesh->material.diffuseTexture.id, texIndex);
 
                     textureDescriptors.emplace_back(VkDescriptorImageInfo{
                         .sampler     = newTextures.back().sampler,
@@ -1154,6 +1154,7 @@ void VulkanAdapter::LoadNode(const Node& node)
         }
 
         newIndexes.push_back(texIndex);
+        newDiffuseColors.push_back(mesh->material.baseDiffuseColor);
     }
 
     navigation  = node.aabb.Center();
@@ -1169,6 +1170,7 @@ void VulkanAdapter::LoadNode(const Node& node)
     }
 
     textureIndexes = std::move(newIndexes);
+    diffuseColors  = std::move(newDiffuseColors);
 
     std::swap(textures, newTextures);
     for (const TextureResource& texture : newTextures)

@@ -35,6 +35,16 @@ static std::string GetDiffuseTexRef(aiMaterial* mat)
     return "";
 }
 
+static glm::vec4 GetDiffuseColor(aiMaterial* mat)
+{
+    aiColor4D diffuseColor;
+    if (aiGetMaterialColor(mat, AI_MATKEY_COLOR_DIFFUSE, &diffuseColor) == AI_SUCCESS)
+    {
+        return glm::vec4(diffuseColor.r, diffuseColor.g, diffuseColor.b, diffuseColor.a);
+    }
+    return glm::vec4(1.0f);
+}
+
 static std::string JoinPath(const std::string& dir, const std::string& rel)
 {
     if (rel.empty() || rel[0] == '*')
@@ -248,10 +258,15 @@ static bool ParseOneMesh(const aiScene*     scene,
     {
         auto* mat = scene->mMaterials[aimesh->mMaterialIndex];
 
-        // load diffuse texture
+        //////////////////////////////////////////////////////////////////////////
+        // diffuse color
+        mesh.material.baseDiffuseColor = GetDiffuseColor(mat);
+
+        // diffuse texture
         std::string diffuseTex = GetDiffuseTexRef(mat);
         diffuseTex             = JoinPath(assetDir, diffuseTex);
-        LoadTexture(diffuseTex, scene, mesh.diffuse);
+        LoadTexture(diffuseTex, scene, mesh.material.diffuseTexture);
+        //////////////////////////////////////////////////////////////////////////
     }
 
     // world aabb (transform local aabb by global matrix)

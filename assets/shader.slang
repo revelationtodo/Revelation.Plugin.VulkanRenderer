@@ -20,6 +20,7 @@ struct PushConstant
 {
     uint64_t shaderDataAddr;
     float4x4 model;
+    float4 baseDiffuseColor;
     int textureIndex;
 };
 
@@ -35,6 +36,7 @@ struct VSOutput
     float3 ViewVecWS;
 
     int TextureIndex;
+    float4 baseDiffuseColor;
 };
 
 [[vk::push_constant]]
@@ -72,6 +74,8 @@ VSOutput main(VSInput input, uint instanceIndex : SV_VulkanInstanceID)
 
     output.TextureIndex = pc.textureIndex;
 
+    output.baseDiffuseColor = pc.baseDiffuseColor;
+
     return output;
 }
 
@@ -89,7 +93,7 @@ float4 main(VSOutput input)
     float3 specular = pow(max(dot(R, V), 0.0), 16.0) * 0.75;
 
     // Sample texture
-    float3 albedo = float3(1.0, 1.0, 1.0);
+    float3 albedo = input.baseDiffuseColor.rgb;
     if (input.TextureIndex >= 0)
     {
         albedo = textures[input.TextureIndex].Sample(input.UV).rgb;

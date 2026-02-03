@@ -37,12 +37,19 @@ struct Texture
     std::vector<uint8_t> buffer;
 };
 
+struct Material
+{
+    glm::vec4 baseDiffuseColor = glm::vec4(1.0f);
+
+    Texture diffuseTexture;
+};
+
 struct Mesh
 {
     std::vector<Vertex> vertices;
     std::vector<Index>  indices;
 
-    Texture diffuse;
+    Material material;
 
     AxisAlignedBox aabb;
 
