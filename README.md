@@ -13,12 +13,13 @@
 
    ## Usage
 
-   1. Download **Revelation TODO** from the [Releases](https://github.com/revelationtodo/Revelation/releases) page.
-   2. Download the **Vulkan Renderer** plugin from this repository’s release page.
-   3. Extract the downloaded `.zip` file into the Revelation installation directory.
-   4. Launch `Revelation.exe` and open the **Vulkan Renderer** plugin page.
-   5. Drag any supported 3D model file into the renderer window.
-   6. The model will be loaded and rendered once the import process is complete.
+   1. Download and install the Vulkan SDK from the official website: [Vulkan](https://vulkan.lunarg.com/)
+   2. Download **Revelation TODO** from the [Releases](https://github.com/revelationtodo/Revelation/releases) page.
+   3. Download the **Vulkan Renderer** plugin from this repository’s release page.
+   4. Extract the downloaded `.zip` file into the Revelation installation directory.
+   5. Launch `Revelation.exe` and open the **Vulkan Renderer** plugin page.
+   6. Drag any supported 3D model file into the renderer window.
+   7. The model will be loaded and rendered once the import process is complete.
 
    ---
 
@@ -30,12 +31,13 @@
 
    ## 使用说明
 
-   1. 从 [Releases](https://github.com/revelationtodo/Revelation/releases) 页面下载 **Revelation TODO** 主程序。
-   2. 从本仓库的发布页面下载 **Vulkan Renderer** 插件。
-   3. 将下载的 `.zip` 文件解压到 Revelation 的安装目录中。
-   4. 启动 `Revelation.exe`，并切换到 **Vulkan Renderer** 插件页面。
-   5. 将任意支持格式的 3D 模型文件拖拽到渲染窗口中。
-   6. 模型加载完成后，将自动显示并渲染在窗口中。
+   1. 从 [Vulkan](https://vulkan.lunarg.com/) 页面下载 **Vulkan SDK**。
+   2. 从 [Releases](https://github.com/revelationtodo/Revelation/releases) 页面下载 **Revelation TODO** 主程序。
+   3. 从本仓库的发布页面下载 **Vulkan Renderer** 插件。
+   4. 将下载的 `.zip` 文件解压到 Revelation 的安装目录中。
+   5. 启动 `Revelation.exe`，并切换到 **Vulkan Renderer** 插件页面。
+   6. 将任意支持格式的 3D 模型文件拖拽到渲染窗口中。
+   7. 模型加载完成后，将自动显示并渲染在窗口中。
 
    ---
 
@@ -89,15 +91,15 @@
       Revelation/SourceCode/vcpkg.json
       ```
 
-   4. **Build Revelation**
+   5. **Build Revelation**
       Follow the build instructions provided in the main Revelation repository:
       https://github.com/revelationtodo/Revelation
 
-   5. Build and Run
+   6. Build and Run
 
       After completing the engine setup:
 
       - Build the project
       - Launch Revelation.exe
-      - Switch to renderer page
+      - Switch to the renderer page
       - Verify that the Vulkan Renderer plugin is correctly loaded
