@@ -57,15 +57,12 @@ struct BufferDesc
     Index        indexCount          = 0;
 };
 
-struct Texture
+struct TextureResource
 {
     VmaAllocation allocation = VK_NULL_HANDLE;
     VkImage       image      = VK_NULL_HANDLE;
     VkImageView   view       = VK_NULL_HANDLE;
     VkSampler     sampler    = VK_NULL_HANDLE;
-
-    uint32_t width  = 0;
-    uint32_t height = 0;
 };
 
 class VulkanAdapter
@@ -103,7 +100,7 @@ class VulkanAdapter
     void CollectMeshes(const Node& node, std::vector<const Mesh*>& out);
     void LoadNode(const Node& node);
     bool LoadMesh(const Mesh& mesh, std::vector<BufferDesc>& buffers);
-    bool LoadTexture(const std::string& texPath, std::vector<Texture>& textures);
+    bool LoadTexture(const Texture& tex, std::vector<TextureResource>& textures);
 
   private:
     VulkanRendererWidget* m_targetWindow = nullptr;
@@ -120,10 +117,10 @@ class VulkanAdapter
     using CommandBuffers      = std::array<VkCommandBuffer, maxFramesInFlight>;
     using SlangGlobalSession  = Slang::ComPtr<slang::IGlobalSession>;
 
-    std::vector<BufferDesc> modelBuffers;
-    std::vector<glm::mat4>  modelMatrices;
-    std::vector<Texture>    textures;
-    std::vector<int>        textureIndexes;
+    std::vector<BufferDesc>      modelBuffers;
+    std::vector<glm::mat4>       modelMatrices;
+    std::vector<TextureResource> textures;
+    std::vector<int>             textureIndexes;
 
     glm::vec3 navigation  = glm::vec3(0);
     glm::vec3 camPosition = glm::vec3(0);

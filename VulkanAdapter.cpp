@@ -7,9 +7,6 @@
 #define VMA_IMPLEMENTATION
 #include <vma/vk_mem_alloc.h>
 
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
-
 VulkanAdapter::VulkanAdapter(VulkanRendererWidget* targetWindow)
     : m_targetWindow(targetWindow)
 {
@@ -114,7 +111,7 @@ void VulkanAdapter::Uninitialize()
         vmaDestroyBuffer(allocator, bufferDesc.buffer, bufferDesc.allocation);
     }
 
-    for (const Texture& texture : textures)
+    for (const TextureResource& texture : textures)
     {
         vkDestroyImageView(device, texture.view, nullptr);
         vkDestroySampler(device, texture.sampler, nullptr);
@@ -163,8 +160,8 @@ void VulkanAdapter::Tick(double elapsed)
 
     // update shader data
     ShaderData shaderData;
-    float      aspect = (float)m_targetWindow->width() / m_targetWindow->height();
-    shaderData.projection     = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 3200.0f);
+    float      aspect     = (float)m_targetWindow->width() / m_targetWindow->height();
+    shaderData.projection = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 3200.0f);
     shaderData.projection[1][1] *= -1;
     shaderData.view      = glm::lookAt(camPosition, navigation, glm::vec3(0, 1, 0));
     shaderData.cameraPos = glm::vec4(camPosition, 1.0f);
@@ -284,7 +281,7 @@ void VulkanAdapter::Tick(double elapsed)
         .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
         .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
         .dstAccessMask = 0,
-        .oldLayout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .oldLayout     = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
         .newLayout     = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
         .image         = swapchainImages[imageIndex],
         .subresourceRange{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -1112,7 +1109,7 @@ void VulkanAdapter::LoadNode(const Node& node)
 
     std::vector<BufferDesc>            newModelBuffers;
     std::vector<glm::mat4>             newModelMatrices;
-    std::vector<Texture>               newTextures;
+    std::vector<TextureResource>       newTextures;
     std::vector<int>                   newIndexes;
     std::vector<VkDescriptorImageInfo> textureDescriptors;
 
@@ -1130,9 +1127,9 @@ void VulkanAdapter::LoadNode(const Node& node)
 
         newModelMatrices.push_back(shape.trans);
         int texIndex = -1;
-        if (!shape.diffuse.empty())
+        if (!shape.diffuse.id.empty())
         {
-            auto it = texIndexCache.find(shape.diffuse);
+            auto it = texIndexCache.find(shape.diffuse.id);
             if (it != texIndexCache.end())
             {
                 texIndex = it->second;
@@ -1142,7 +1139,7 @@ void VulkanAdapter::LoadNode(const Node& node)
                 if (LoadTexture(shape.diffuse, newTextures))
                 {
                     texIndex = static_cast<int>(textureDescriptors.size());
-                    texIndexCache.emplace(shape.diffuse, texIndex);
+                    texIndexCache.emplace(shape.diffuse.id, texIndex);
 
                     textureDescriptors.emplace_back(VkDescriptorImageInfo{
                         .sampler     = newTextures.back().sampler,
@@ -1174,7 +1171,7 @@ void VulkanAdapter::LoadNode(const Node& node)
     textureIndexes = std::move(newIndexes);
 
     std::swap(textures, newTextures);
-    for (const Texture& texture : newTextures)
+    for (const TextureResource& texture : newTextures)
     {
         vkDestroyImageView(device, texture.view, nullptr);
         vkDestroySampler(device, texture.sampler, nullptr);
@@ -1228,32 +1225,19 @@ bool VulkanAdapter::LoadMesh(const Mesh& mesh, std::vector<BufferDesc>& buffers)
     return false;
 }
 
-bool VulkanAdapter::LoadTexture(const std::string& texPath, std::vector<Texture>& textures)
+bool VulkanAdapter::LoadTexture(const Texture& tex, std::vector<TextureResource>& textures)
 {
-    if (texPath.empty() || !std::filesystem::exists(texPath))
+    if (tex.id.empty() || tex.width == 0 || tex.height == 0)
     {
         return false;
     }
 
-    // stbi_set_flip_vertically_on_load(true);
-    int      width = 0, height = 0, channels = 0;
-    stbi_uc* data = stbi_load(texPath.c_str(), &width, &height, &channels, STBI_rgb_alpha);
-    if (width == 0 || height == 0 || nullptr == data)
-    {
-        return false;
-    }
-
-    channels                  = 4;
-    size_t               size = width * height * channels;
-    std::vector<uint8_t> pixels(data, data + size);
-    stbi_image_free(data);
-
-    Texture                 tex;
+    TextureResource         texResource;
     VkImageCreateInfo       texImgCI{.sType       = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
                                      .imageType   = VK_IMAGE_TYPE_2D,
                                      .format      = VK_FORMAT_R8G8B8A8_UNORM,
-                                     .extent      = {.width  = (uint32_t)width,
-                                                     .height = (uint32_t)height,
+                                     .extent      = {.width  = (uint32_t)tex.width,
+                                                     .height = (uint32_t)tex.height,
                                                      .depth  = 1},
                                      .mipLevels   = 1,
                                      .arrayLayers = 1,
@@ -1263,25 +1247,26 @@ bool VulkanAdapter::LoadTexture(const std::string& texPath, std::vector<Texture>
                                         VK_IMAGE_USAGE_SAMPLED_BIT,
                                      .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED};
     VmaAllocationCreateInfo texImageAllocCI{.usage = VMA_MEMORY_USAGE_AUTO};
-    if (!Check(vmaCreateImage(allocator, &texImgCI, &texImageAllocCI, &tex.image, &tex.allocation, nullptr)))
+    if (!Check(vmaCreateImage(allocator, &texImgCI, &texImageAllocCI, &texResource.image, &texResource.allocation, nullptr)))
     {
         return false;
     }
 
     VkImageViewCreateInfo texViewCI{
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image            = tex.image,
+        .image            = texResource.image,
         .viewType         = VK_IMAGE_VIEW_TYPE_2D,
         .format           = texImgCI.format,
         .subresourceRange = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                              .levelCount = 1,
                              .layerCount = 1}};
-    if (!Check(vkCreateImageView(device, &texViewCI, nullptr, &tex.view)))
+    if (!Check(vkCreateImageView(device, &texViewCI, nullptr, &texResource.view)))
     {
         return false;
     }
 
     // upload
+    size_t             size             = tex.width * tex.height * tex.channels;
     VkBuffer           imgSrcBuffer     = VK_NULL_HANDLE;
     VmaAllocation      imgSrcAllocation = VK_NULL_HANDLE;
     VkBufferCreateInfo imgSrcBufferCI{
@@ -1302,7 +1287,7 @@ bool VulkanAdapter::LoadTexture(const std::string& texPath, std::vector<Texture>
     {
         return false;
     }
-    memcpy(imgSrcBufferPtr, pixels.data(), size);
+    memcpy(imgSrcBufferPtr, tex.buffer.data(), size);
 
     VkFence           fenceOneTime = VK_NULL_HANDLE;
     VkFenceCreateInfo fenceOneTimeCI{
@@ -1338,7 +1323,7 @@ bool VulkanAdapter::LoadTexture(const std::string& texPath, std::vector<Texture>
         .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
         .oldLayout     = VK_IMAGE_LAYOUT_UNDEFINED,
         .newLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        .image         = tex.image,
+        .image         = texResource.image,
         .subresourceRange{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                           .levelCount = 1,
                           .layerCount = 1}};
@@ -1360,14 +1345,14 @@ bool VulkanAdapter::LoadTexture(const std::string& texPath, std::vector<Texture>
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                 .mipLevel   = (uint32_t)i,
                 .layerCount = 1},
-            .imageExtent{.width  = (uint32_t)width >> i,
-                         .height = (uint32_t)height >> i,
+            .imageExtent{.width  = (uint32_t)tex.width >> i,
+                         .height = (uint32_t)tex.height >> i,
                          .depth  = 1}};
 
         copyRegions.emplace_back(std::move(bufferImageCopy));
     }
     VkImageLayout layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    vkCmdCopyBufferToImage(cbOneTime, imgSrcBuffer, tex.image, layout, (uint32_t)copyRegions.size(), copyRegions.data());
+    vkCmdCopyBufferToImage(cbOneTime, imgSrcBuffer, texResource.image, layout, (uint32_t)copyRegions.size(), copyRegions.data());
 
     VkImageMemoryBarrier2 barrierTexRead{
         .sType         = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -1377,7 +1362,7 @@ bool VulkanAdapter::LoadTexture(const std::string& texPath, std::vector<Texture>
         .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
         .oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         .newLayout     = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
-        .image         = tex.image,
+        .image         = texResource.image,
         .subresourceRange{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                           .levelCount = 1,
                           .layerCount = 1}};
@@ -1417,11 +1402,11 @@ bool VulkanAdapter::LoadTexture(const std::string& texPath, std::vector<Texture>
         .anisotropyEnable = VK_TRUE,
         .maxAnisotropy    = 8.0f,
         .maxLod           = 1};
-    if (!Check(vkCreateSampler(device, &samplerCI, nullptr, &tex.sampler)))
+    if (!Check(vkCreateSampler(device, &samplerCI, nullptr, &texResource.sampler)))
     {
         return false;
     }
 
-    textures.emplace_back(std::move(tex));
+    textures.emplace_back(std::move(texResource));
     return true;
 }

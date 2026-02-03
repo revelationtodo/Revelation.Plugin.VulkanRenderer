@@ -7,6 +7,9 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
 #include <cstdint>
 #include <filesystem>
 #include <limits>
@@ -48,6 +51,54 @@ static std::string JoinPath(const std::string& dir, const std::string& rel)
     std::filesystem::path base(dir);
     std::filesystem::path full = base / texPath;
     return std::filesystem::weakly_canonical(full).string();
+}
+
+static bool LoadTexture(const std::string& texPath, const aiScene* scene, Texture& tex)
+{
+    if (texPath[0] == '*') // embedded texture
+    {
+        int              index = std::atoi(texPath.c_str() + 1);
+        const aiTexture* aiTex = scene->mTextures[index];
+        if (aiTex->mHeight == 0) // compressed
+        {
+            int      channels = 0;
+            stbi_uc* loaded   = stbi_load_from_memory(reinterpret_cast<const uint8_t*>(aiTex->pcData), aiTex->mWidth, &tex.width, &tex.height, &tex.channels, STBI_rgb_alpha);
+            if (!loaded || tex.width == 0 || tex.height == 0)
+            {
+                return false;
+            }
+
+            channels    = 4;
+            size_t size = size_t(tex.width) * tex.height * channels;
+            tex.buffer.assign(loaded, loaded + size);
+            stbi_image_free(loaded);
+        }
+        else // uncompressed
+        {
+            size_t byteSize = aiTex->mWidth * aiTex->mHeight * 4;
+            tex.buffer.resize(byteSize);
+            memcpy(tex.buffer.data(), aiTex->pcData, byteSize);
+            tex.width  = aiTex->mWidth;
+            tex.height = aiTex->mHeight;
+        }
+    }
+    else // regular image file
+    {
+        int      channels = 0;
+        stbi_uc* loaded   = stbi_load(texPath.c_str(), &tex.width, &tex.height, &tex.channels, STBI_rgb_alpha);
+        if (!loaded || tex.width == 0 || tex.height == 0)
+        {
+            return false;
+        }
+
+        channels    = 4;
+        size_t size = size_t(tex.width) * tex.width * channels;
+        tex.buffer.assign(loaded, loaded + size);
+        stbi_image_free(loaded);
+    }
+
+    tex.id = texPath;
+    return true;
 }
 
 static glm::mat4 ToGlm(const aiMatrix4x4& m)
@@ -197,9 +248,12 @@ static bool ParseOneMesh(const aiScene*     scene,
     // diffuse texture path
     if (aimesh->mMaterialIndex >= 0 && scene->mMaterials)
     {
-        auto* mat    = scene->mMaterials[aimesh->mMaterialIndex];
-        mesh.diffuse = GetDiffuseTexRef(mat);
-        mesh.diffuse = JoinPath(assetDir, mesh.diffuse);
+        auto* mat = scene->mMaterials[aimesh->mMaterialIndex];
+
+        // load diffuse texture
+        std::string diffuseTex = GetDiffuseTexRef(mat);
+        diffuseTex             = JoinPath(assetDir, diffuseTex);
+        LoadTexture(diffuseTex, scene, mesh.diffuse);
     }
 
     // world aabb (transform local aabb by global matrix)

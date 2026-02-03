@@ -28,12 +28,21 @@ struct AxisAlignedBox
     }
 };
 
+struct Texture
+{
+    std::string          id       = "";
+    int                  width    = 0;
+    int                  height   = 0;
+    int                  channels = 0;
+    std::vector<uint8_t> buffer;
+};
+
 struct Mesh
 {
     std::vector<Vertex> vertices;
     std::vector<Index>  indices;
 
-    std::string diffuse = "";
+    Texture diffuse;
 
     AxisAlignedBox aabb;
 
