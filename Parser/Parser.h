@@ -28,7 +28,7 @@ struct AxisAlignedBox
     }
 };
 
-struct Shape
+struct Mesh
 {
     std::vector<Vertex> vertices;
     std::vector<Index>  indices;
@@ -36,18 +36,18 @@ struct Shape
     std::string diffuse = "";
 
     AxisAlignedBox aabb;
+
+    glm::mat4 trans = glm::mat4(1);
 };
 
-struct Model
+struct Node
 {
-    std::vector<Shape> shapes;
+    std::vector<Node> children;
+    std::vector<Mesh> meshes;
 
     AxisAlignedBox aabb;
-};
 
-struct ParserDesc
-{
-    std::set<std::string> extensions;
+    glm::mat4 trans = glm::mat4(1);
 };
 
 class Parser
@@ -56,5 +56,5 @@ class Parser
     Parser();
     ~Parser();
 
-    bool Parse(const std::string& file, Model& model);
+    bool Parse(const std::string& file, Node& model);
 };

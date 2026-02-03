@@ -162,15 +162,13 @@ void VulkanAdapter::Tick(double elapsed)
     }
 
     // update shader data
-    ShaderData sd;
+    ShaderData shaderData;
     float      aspect = (float)m_targetWindow->width() / m_targetWindow->height();
-    sd.projection     = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 3200.0f);
-    sd.projection[1][1] *= -1;
-    sd.view            = glm::lookAt(camPosition, navigation, glm::vec3(0, 1, 0));
-    glm::vec3 modelPos = glm::vec3(0);
-    sd.model           = glm::translate(glm::mat4(1.0f), modelPos);
-    sd.cameraPos       = glm::vec4(camPosition, 1.0f);
-    memcpy(shaderDataBuffers[frameIndex].mapped, &sd, sizeof(ShaderData));
+    shaderData.projection     = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 3200.0f);
+    shaderData.projection[1][1] *= -1;
+    shaderData.view      = glm::lookAt(camPosition, navigation, glm::vec3(0, 1, 0));
+    shaderData.cameraPos = glm::vec4(camPosition, 1.0f);
+    memcpy(shaderDataBuffers[frameIndex].mapped, &shaderData, sizeof(ShaderData));
 
     PushConstant pushConstant;
     pushConstant.shaderDataAddr = shaderDataBuffers[frameIndex].deviceAddress;
@@ -267,6 +265,7 @@ void VulkanAdapter::Tick(double elapsed)
     assert(modelBuffers.size() == textureIndexes.size());
     for (int i = 0; i < modelBuffers.size(); ++i)
     {
+        pushConstant.model        = modelMatrices[i];
         pushConstant.textureIndex = textureIndexes[i];
 
         const BufferDesc& bufferDesc = modelBuffers[i];
@@ -899,10 +898,10 @@ void VulkanAdapter::PollInputEvents(double elapsed)
         {
             DropEventData data = std::any_cast<DropEventData>(event.data);
             std::thread   loadThread([this, data]() {
-                Model model;
-                if (m_parser.Parse(data.file, model))
+                Node node;
+                if (m_parser.Parse(data.file, node))
                 {
-                    LoadModel(model);
+                    LoadNode(node);
                 }
             });
             loadThread.detach();
@@ -1087,52 +1086,93 @@ bool VulkanAdapter::UpdateSwapchain()
     return true;
 }
 
-void VulkanAdapter::LoadModel(const Model& model)
+void VulkanAdapter::CollectMeshes(const Node& node, std::vector<const Mesh*>& out)
+{
+    for (const Mesh& mesh : node.meshes)
+    {
+        out.push_back(&mesh);
+    }
+
+    for (const Node& child : node.children)
+    {
+        CollectMeshes(child, out);
+    }
+}
+
+void VulkanAdapter::LoadNode(const Node& node)
 {
     std::lock_guard<std::mutex> guard(renderLock);
 
     vkDeviceWaitIdle(device);
 
+    std::vector<const Mesh*> meshes;
+    CollectMeshes(node, meshes);
+
     textures.clear();
 
     std::vector<BufferDesc>            newModelBuffers;
+    std::vector<glm::mat4>             newModelMatrices;
     std::vector<Texture>               newTextures;
     std::vector<int>                   newIndexes;
     std::vector<VkDescriptorImageInfo> textureDescriptors;
-    for (const Shape& shape : model.shapes)
+
+    std::unordered_map<std::string, int> texIndexCache;
+    texIndexCache.reserve(meshes.size());
+
+    for (const Mesh* mesh : meshes)
     {
-        // load shape
-        if (!LoadShape(shape, newModelBuffers))
+        const Mesh& shape = *mesh;
+
+        if (!LoadMesh(shape, newModelBuffers))
         {
             continue;
         }
 
-        // load diffuse texture
-        if (!LoadTexture(shape.diffuse, newTextures))
+        newModelMatrices.push_back(shape.trans);
+        int texIndex = -1;
+        if (!shape.diffuse.empty())
         {
-            newIndexes.push_back(-1);
-            continue;
+            auto it = texIndexCache.find(shape.diffuse);
+            if (it != texIndexCache.end())
+            {
+                texIndex = it->second;
+            }
+            else
+            {
+                if (LoadTexture(shape.diffuse, newTextures))
+                {
+                    texIndex = static_cast<int>(textureDescriptors.size());
+                    texIndexCache.emplace(shape.diffuse, texIndex);
+
+                    textureDescriptors.emplace_back(VkDescriptorImageInfo{
+                        .sampler     = newTextures.back().sampler,
+                        .imageView   = newTextures.back().view,
+                        .imageLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL});
+                }
+                else
+                {
+                    texIndex = -1;
+                }
+            }
         }
-        newIndexes.push_back(textureDescriptors.size());
-        textureDescriptors.emplace_back(VkDescriptorImageInfo{
-            .sampler     = newTextures.back().sampler,
-            .imageView   = newTextures.back().view,
-            .imageLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL});
+
+        newIndexes.push_back(texIndex);
     }
 
-    navigation  = model.aabb.Center();
-    camPosition = navigation + glm::vec3(0, 0, model.aabb.Length().z * 2.5f);
+    navigation  = node.aabb.Center();
+    camPosition = navigation + glm::vec3(0, 0, node.aabb.Length().z * 2.5f);
     camRotation = glm::quat(1, 0, 0, 0);
 
-    // swap shape buffers
+    // swap & destroy old resources
     std::swap(modelBuffers, newModelBuffers);
+    std::swap(modelMatrices, newModelMatrices);
     for (const BufferDesc& bufferDesc : newModelBuffers)
     {
         vmaDestroyBuffer(allocator, bufferDesc.buffer, bufferDesc.allocation);
     }
 
-    // swap texture buffers
-    textureIndexes = newIndexes;
+    textureIndexes = std::move(newIndexes);
+
     std::swap(textures, newTextures);
     for (const Texture& texture : newTextures)
     {
@@ -1142,21 +1182,24 @@ void VulkanAdapter::LoadModel(const Model& model)
     }
 
     // update descriptor set
-    VkWriteDescriptorSet writeDescSet{
-        .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstSet          = descriptorSetTex,
-        .dstBinding      = 0,
-        .descriptorCount = static_cast<uint32_t>(textureDescriptors.size()),
-        .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .pImageInfo      = textureDescriptors.data()};
-    vkUpdateDescriptorSets(device, 1, &writeDescSet, 0, nullptr);
+    if (!textureDescriptors.empty())
+    {
+        VkWriteDescriptorSet writeDescSet{
+            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet          = descriptorSetTex,
+            .dstBinding      = 0,
+            .descriptorCount = static_cast<uint32_t>(textureDescriptors.size()),
+            .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .pImageInfo      = textureDescriptors.data()};
+        vkUpdateDescriptorSets(device, 1, &writeDescSet, 0, nullptr);
+    }
 }
 
-bool VulkanAdapter::LoadShape(const Shape& shape, std::vector<BufferDesc>& buffers)
+bool VulkanAdapter::LoadMesh(const Mesh& mesh, std::vector<BufferDesc>& buffers)
 {
     BufferDesc         bufferDesc;
-    VkDeviceSize       vbSize = sizeof(Vertex) * shape.vertices.size();
-    VkDeviceSize       ibSize = sizeof(Index) * shape.indices.size();
+    VkDeviceSize       vbSize = sizeof(Vertex) * mesh.vertices.size();
+    VkDeviceSize       ibSize = sizeof(Index) * mesh.indices.size();
     VkBufferCreateInfo bufferCI{
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size  = vbSize + ibSize,
@@ -1170,12 +1213,12 @@ bool VulkanAdapter::LoadShape(const Shape& shape, std::vector<BufferDesc>& buffe
     if (Check(vmaCreateBuffer(allocator, &bufferCI, &bufferAllocCI, &bufferDesc.buffer, &bufferDesc.allocation, nullptr)))
     {
         bufferDesc.offsetOfIndexBuffer = vbSize;
-        bufferDesc.indexCount          = shape.indices.size();
+        bufferDesc.indexCount          = mesh.indices.size();
 
         void* mapped = nullptr;
         vmaMapMemory(allocator, bufferDesc.allocation, &mapped);
-        memcpy(mapped, shape.vertices.data(), vbSize);
-        memcpy(((char*)mapped) + vbSize, shape.indices.data(), ibSize);
+        memcpy(mapped, mesh.vertices.data(), vbSize);
+        memcpy(((char*)mapped) + vbSize, mesh.indices.data(), ibSize);
         vmaUnmapMemory(allocator, bufferDesc.allocation);
 
         buffers.emplace_back(std::move(bufferDesc));
@@ -1192,7 +1235,7 @@ bool VulkanAdapter::LoadTexture(const std::string& texPath, std::vector<Texture>
         return false;
     }
 
-    stbi_set_flip_vertically_on_load(true);
+    // stbi_set_flip_vertically_on_load(true);
     int      width = 0, height = 0, channels = 0;
     stbi_uc* data = stbi_load(texPath.c_str(), &width, &height, &channels, STBI_rgb_alpha);
     if (width == 0 || height == 0 || nullptr == data)
@@ -1363,6 +1406,7 @@ bool VulkanAdapter::LoadTexture(const std::string& texPath, std::vector<Texture>
     vkDestroyFence(device, fenceOneTime, nullptr);
     vmaUnmapMemory(allocator, imgSrcAllocation);
     vmaDestroyBuffer(allocator, imgSrcBuffer, imgSrcAllocation);
+    vkFreeCommandBuffers(device, commandPool, 1, &cbOneTime);
 
     // sampler
     VkSamplerCreateInfo samplerCI{

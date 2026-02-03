@@ -23,21 +23,21 @@ class VulkanRendererWidget;
 
 constexpr uint32_t maxFramesInFlight{2};
 
-struct ShaderData
+struct alignas(16) ShaderData
 {
     glm::mat4 projection = glm::mat4(1);
     glm::mat4 view       = glm::mat4(1);
-    glm::mat4 model      = glm::mat4(1);
     glm::vec4 lightPos   = glm::vec4(0.0f, -1000.0f, 1000.0f, 0.0f);
     glm::vec4 cameraPos  = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
-
-    int textureIndex = -1;
 };
 
-struct PushConstant
+struct alignas(16) PushConstant
 {
     uint64_t shaderDataAddr = 0;
-    int      textureIndex   = -1;
+    uint64_t _pad0          = 0;
+
+    glm::mat4 model        = glm::mat4(1);
+    int       textureIndex = -1;
 };
 
 struct ShaderDataBuffer
@@ -99,8 +99,10 @@ class VulkanAdapter
     void PollInputEvents(double elapsed);
 
     bool UpdateSwapchain();
-    void LoadModel(const Model& model);
-    bool LoadShape(const Shape& shape, std::vector<BufferDesc>& buffers);
+
+    void CollectMeshes(const Node& node, std::vector<const Mesh*>& out);
+    void LoadNode(const Node& node);
+    bool LoadMesh(const Mesh& mesh, std::vector<BufferDesc>& buffers);
     bool LoadTexture(const std::string& texPath, std::vector<Texture>& textures);
 
   private:
@@ -119,10 +121,11 @@ class VulkanAdapter
     using SlangGlobalSession  = Slang::ComPtr<slang::IGlobalSession>;
 
     std::vector<BufferDesc> modelBuffers;
+    std::vector<glm::mat4>  modelMatrices;
     std::vector<Texture>    textures;
     std::vector<int>        textureIndexes;
 
-    glm::vec3 navigation = glm::vec3(0);
+    glm::vec3 navigation  = glm::vec3(0);
     glm::vec3 camPosition = glm::vec3(0);
     glm::quat camRotation = glm::quat(1, 0, 0, 0);
 

@@ -11,7 +11,6 @@ struct ShaderData
 {
     float4x4 projection;
     float4x4 view;
-    float4x4 model;
 
     float4 lightPos;
     float4 cameraPos;
@@ -20,6 +19,7 @@ struct ShaderData
 struct PushConstant
 {
     uint64_t shaderDataAddr;
+    float4x4 model;
     int textureIndex;
 };
 
@@ -47,7 +47,7 @@ VSOutput main(VSInput input, uint instanceIndex : SV_VulkanInstanceID)
 
     ShaderData* shaderData = (ShaderData*)pc.shaderDataAddr;
 
-    float4x4 M = shaderData->model;
+    float4x4 M = pc.model;
     float4x4 V = shaderData->view;
     float4x4 P = shaderData->projection;
 
