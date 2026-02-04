@@ -445,7 +445,7 @@ bool VulkanAdapter::InitVulkanQueue()
     vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, nullptr);
     std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
     vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilies.data());
-    for (size_t i = 0; i < queueFamilies.size(); ++i)
+    for (uint32_t i = 0; i < queueFamilies.size(); ++i)
     {
         if (queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
         {
@@ -558,7 +558,7 @@ bool VulkanAdapter::InitVulkanSwapchain()
     swapchainImages.resize(imageCount);
     vkGetSwapchainImagesKHR(device, swapchain, &imageCount, swapchainImages.data());
     swapchainImageViews.resize(imageCount);
-    for (int i = 0; i < imageCount; ++i)
+    for (uint32_t i = 0; i < imageCount; ++i)
     {
         VkImageViewCreateInfo viewCI{
             .sType    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -648,7 +648,7 @@ bool VulkanAdapter::InitVulkanShader()
         .targetCount              = SlangInt(slangTargets.size()),
         .defaultMatrixLayoutMode  = SLANG_MATRIX_LAYOUT_COLUMN_MAJOR,
         .compilerOptionEntries    = slangOptions.data(),
-        .compilerOptionEntryCount = slangOptions.size()};
+        .compilerOptionEntryCount = (uint32_t)slangOptions.size()};
     Slang::ComPtr<slang::ISession> slangSession;
     slangGlobalSession->createSession(slangSessionDesc, slangSession.writeRef());
 
@@ -1071,7 +1071,7 @@ bool VulkanAdapter::UpdateSwapchain()
     swapchainImages.resize(imageCount);
     vkGetSwapchainImagesKHR(device, swapchain, &imageCount, swapchainImages.data());
     swapchainImageViews.resize(imageCount);
-    for (int i = 0; i < imageCount; ++i)
+    for (uint32_t i = 0; i < imageCount; ++i)
     {
         VkImageViewCreateInfo viewCI{
             .sType    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -1295,7 +1295,7 @@ bool VulkanAdapter::LoadMesh(const Mesh& mesh, std::vector<MeshGpuBuffer>& buffe
     if (Check(vmaCreateBuffer(allocator, &bufferCI, &bufferAllocCI, &bufferDesc.buffer, &bufferDesc.allocation, nullptr)))
     {
         bufferDesc.offsetOfIndexBuffer = vbSize;
-        bufferDesc.indexCount          = mesh.indices.size();
+        bufferDesc.indexCount          = (Index)mesh.indices.size();
 
         void* mapped = nullptr;
         vmaMapMemory(allocator, bufferDesc.allocation, &mapped);
