@@ -78,7 +78,7 @@ static bool LoadTexture(const std::string& texPath, const aiScene* scene, Textur
             }
 
             tex.channels = 4;
-            size_t size  = size_t(tex.width) * tex.height * tex.channels;
+            size_t size  = size_t(tex.width) * size_t(tex.height) * size_t(tex.channels);
             tex.buffer.assign(loaded, loaded + size);
             stbi_image_free(loaded);
         }
@@ -100,7 +100,7 @@ static bool LoadTexture(const std::string& texPath, const aiScene* scene, Textur
         }
 
         tex.channels = 4;
-        size_t size  = size_t(tex.width) * tex.width * tex.channels;
+        size_t size  = size_t(tex.width) * size_t(tex.height) * size_t(tex.channels);
         tex.buffer.assign(loaded, loaded + size);
         stbi_image_free(loaded);
     }
