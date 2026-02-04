@@ -23,7 +23,7 @@ class VulkanRendererWidget;
 
 constexpr uint32_t maxFramesInFlight{2};
 
-struct alignas(16) FrameUniform
+struct alignas(16) FrameUniforms
 {
     glm::mat4 projection = glm::mat4(1);
     glm::mat4 view       = glm::mat4(1);
@@ -31,7 +31,7 @@ struct alignas(16) FrameUniform
     glm::vec4 cameraPos  = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 };
 
-struct alignas(16) MeshUniform
+struct alignas(16) MeshUniforms
 {
     glm::mat4 model = glm::mat4(1.0f);
 
@@ -44,12 +44,12 @@ struct alignas(16) MeshUniform
 
 struct alignas(16) PushConstant
 {
-    uint64_t shaderDataPerFrameAddr = 0;
+    uint64_t frameUniformsAddr = 0;
 
-    int32_t shaderDataPerMeshIndex = -1;
-    int32_t _pad0                  = 0;
-    int32_t _pad1                  = 0;
-    int32_t _pad2                  = 0;
+    int32_t meshUniformsIndex = -1;
+    int32_t _pad0             = 0;
+    int32_t _pad1             = 0;
+    int32_t _pad2             = 0;
 };
 
 struct MappedGpuBuffer
@@ -122,17 +122,17 @@ class VulkanAdapter
 
     //////////////////////////////////////////////////////////////////////////
     // Vulkan related
-    using FrameUniformGpuBuffers = std::array<MappedGpuBuffer, maxFramesInFlight>;
-    using Fences                 = std::array<VkFence, maxFramesInFlight>;
-    using PresentSemaphores      = std::array<VkSemaphore, maxFramesInFlight>;
-    using RenderingSemaphores    = std::vector<VkSemaphore>;
-    using CommandBuffers         = std::array<VkCommandBuffer, maxFramesInFlight>;
-    using SlangGlobalSession     = Slang::ComPtr<slang::IGlobalSession>;
+    using FrameUniformsGpuBuffers = std::array<MappedGpuBuffer, maxFramesInFlight>;
+    using Fences                  = std::array<VkFence, maxFramesInFlight>;
+    using PresentSemaphores       = std::array<VkSemaphore, maxFramesInFlight>;
+    using RenderingSemaphores     = std::vector<VkSemaphore>;
+    using CommandBuffers          = std::array<VkCommandBuffer, maxFramesInFlight>;
+    using SlangGlobalSession      = Slang::ComPtr<slang::IGlobalSession>;
 
     std::vector<MeshGpuBuffer>   meshBuffers;
     std::vector<TextureResource> textures;
 
-    MappedGpuBuffer meshUniformGpuBuffer;
+    MappedGpuBuffer meshUniformsGpuBuffer;
 
     glm::vec3 navigation  = glm::vec3(0);
     glm::vec3 camPosition = glm::vec3(0);
@@ -156,7 +156,7 @@ class VulkanAdapter
     VkImage                  depthImage           = VK_NULL_HANDLE;
     VmaAllocation            depthImageAllocation = VK_NULL_HANDLE;
     VkImageView              depthImageView       = VK_NULL_HANDLE;
-    FrameUniformGpuBuffers   frameUniformGpuBuffers;
+    FrameUniformsGpuBuffers  frameUniformGpuBuffers;
     VkShaderModule           shaderModule = VK_NULL_HANDLE;
     SlangGlobalSession       slangGlobalSession;
     Fences                   fences;

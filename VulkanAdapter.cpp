@@ -98,13 +98,13 @@ void VulkanAdapter::Uninitialize()
         vmaDestroyBuffer(allocator, frameUniformGpuBuffers[i].buffer, frameUniformGpuBuffers[i].allocation);
     }
 
-    if (nullptr != meshUniformGpuBuffer.mapped)
+    if (nullptr != meshUniformsGpuBuffer.mapped)
     {
-        vmaUnmapMemory(allocator, meshUniformGpuBuffer.allocation);
+        vmaUnmapMemory(allocator, meshUniformsGpuBuffer.allocation);
     }
-    if (VK_NULL_HANDLE != meshUniformGpuBuffer.buffer)
+    if (VK_NULL_HANDLE != meshUniformsGpuBuffer.buffer)
     {
-        vmaDestroyBuffer(allocator, meshUniformGpuBuffer.buffer, meshUniformGpuBuffer.allocation);
+        vmaDestroyBuffer(allocator, meshUniformsGpuBuffer.buffer, meshUniformsGpuBuffer.allocation);
     }
 
     vkDestroyDescriptorSetLayout(device, descriptorSetLayoutMat, nullptr);
@@ -171,16 +171,16 @@ void VulkanAdapter::Tick(double elapsed)
     }
 
     // update shader data
-    FrameUniform frameUniform;
-    float        aspect     = (float)m_targetWindow->width() / m_targetWindow->height();
-    frameUniform.projection = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 3200.0f);
-    frameUniform.projection[1][1] *= -1;
-    frameUniform.view      = glm::lookAt(camPosition, navigation, glm::vec3(0, 1, 0));
-    frameUniform.cameraPos = glm::vec4(camPosition, 1.0f);
-    memcpy(frameUniformGpuBuffers[frameIndex].mapped, &frameUniform, sizeof(FrameUniform));
+    FrameUniforms frameUniforms;
+    float         aspect     = (float)m_targetWindow->width() / m_targetWindow->height();
+    frameUniforms.projection = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 3200.0f);
+    frameUniforms.projection[1][1] *= -1;
+    frameUniforms.view      = glm::lookAt(camPosition, navigation, glm::vec3(0, 1, 0));
+    frameUniforms.cameraPos = glm::vec4(camPosition, 1.0f);
+    memcpy(frameUniformGpuBuffers[frameIndex].mapped, &frameUniforms, sizeof(FrameUniforms));
 
     PushConstant pushConstant;
-    pushConstant.shaderDataPerFrameAddr = frameUniformGpuBuffers[frameIndex].deviceAddress;
+    pushConstant.frameUniformsAddr = frameUniformGpuBuffers[frameIndex].deviceAddress;
 
     // command buffers
     VkCommandBuffer commandBuffer = commandBuffers[frameIndex];
@@ -271,13 +271,9 @@ void VulkanAdapter::Tick(double elapsed)
     std::array<VkDescriptorSet, 2> descSets{descriptorSetTex, descriptorSetMat};
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, (uint32_t)descSets.size(), descSets.data(), 0, nullptr);
 
-    // assert(meshBuffers.size() == textureIndexes.size());
     for (int i = 0; i < meshBuffers.size(); ++i)
     {
-        // pushConstant.model        = meshMatrices[i];
-        // pushConstant.textureIndex = textureIndexes[i];
-        // pushConstant.diffuseColor = diffuseColors[i];
-        pushConstant.shaderDataPerMeshIndex = i;
+        pushConstant.meshUniformsIndex = i;
 
         const MeshGpuBuffer& meshBuffer = meshBuffers[i];
         VkDeviceSize         vOffset    = 0;
@@ -620,7 +616,7 @@ bool VulkanAdapter::InitVulkanShader()
     {
         VkBufferCreateInfo bufferCI{
             .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            .size  = sizeof(FrameUniform),
+            .size  = sizeof(FrameUniforms),
             .usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT};
         VmaAllocationCreateInfo bufferAllocCI{
             .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
@@ -1157,7 +1153,7 @@ void VulkanAdapter::LoadNode(const Node& node)
     std::vector<MeshGpuBuffer>         newMeshBuffers;
     std::vector<TextureResource>       newTextures;
     std::vector<VkDescriptorImageInfo> textureDescriptors;
-    std::vector<MeshUniform>           meshUniforms;
+    std::vector<MeshUniforms>          meshUniformsVec;
 
     std::unordered_map<std::string, int> texIndexCache;
     texIndexCache.reserve(meshes.size());
@@ -1196,12 +1192,12 @@ void VulkanAdapter::LoadNode(const Node& node)
             }
         }
 
-        MeshUniform meshUniform;
-        meshUniform.model           = mesh->trans;
-        meshUniform.diffuseColor    = mesh->material.baseDiffuseColor;
-        meshUniform.diffuseTexIndex = diffuseTexIndex;
+        MeshUniforms meshUniforms;
+        meshUniforms.model           = mesh->trans;
+        meshUniforms.diffuseColor    = mesh->material.baseDiffuseColor;
+        meshUniforms.diffuseTexIndex = diffuseTexIndex;
 
-        meshUniforms.emplace_back(std::move(meshUniform));
+        meshUniformsVec.emplace_back(std::move(meshUniforms));
     }
 
     navigation  = node.aabb.Center();
@@ -1237,15 +1233,15 @@ void VulkanAdapter::LoadNode(const Node& node)
     }
 
     // update material ssbo
-    VkDeviceSize meshUniformSize = VkDeviceSize(meshUniforms.size()) * sizeof(MeshUniform);
-    if (nullptr != meshUniformGpuBuffer.mapped)
+    VkDeviceSize meshUniformSize = VkDeviceSize(meshUniformsVec.size()) * sizeof(MeshUniforms);
+    if (nullptr != meshUniformsGpuBuffer.mapped)
     {
-        vmaUnmapMemory(allocator, meshUniformGpuBuffer.allocation);
-        meshUniformGpuBuffer.mapped = nullptr;
+        vmaUnmapMemory(allocator, meshUniformsGpuBuffer.allocation);
+        meshUniformsGpuBuffer.mapped = nullptr;
     }
-    if (VK_NULL_HANDLE != meshUniformGpuBuffer.buffer)
+    if (VK_NULL_HANDLE != meshUniformsGpuBuffer.buffer)
     {
-        vmaDestroyBuffer(allocator, meshUniformGpuBuffer.buffer, meshUniformGpuBuffer.allocation);
+        vmaDestroyBuffer(allocator, meshUniformsGpuBuffer.buffer, meshUniformsGpuBuffer.allocation);
     }
 
     VkBufferCreateInfo bufferCI{
@@ -1257,16 +1253,16 @@ void VulkanAdapter::LoadNode(const Node& node)
                  VMA_ALLOCATION_CREATE_MAPPED_BIT,
         .usage = VMA_MEMORY_USAGE_AUTO};
     VmaAllocationInfo bufferAI{};
-    if (!Check(vmaCreateBuffer(allocator, &bufferCI, &bufferAllocCI, &meshUniformGpuBuffer.buffer, &meshUniformGpuBuffer.allocation, &bufferAI)))
+    if (!Check(vmaCreateBuffer(allocator, &bufferCI, &bufferAllocCI, &meshUniformsGpuBuffer.buffer, &meshUniformsGpuBuffer.allocation, &bufferAI)))
     {
         return;
     }
-    vmaMapMemory(allocator, meshUniformGpuBuffer.allocation, &meshUniformGpuBuffer.mapped);
-    std::memcpy(meshUniformGpuBuffer.mapped, meshUniforms.data(), meshUniformSize);
-    vmaFlushAllocation(allocator, meshUniformGpuBuffer.allocation, 0, meshUniformSize);
+    vmaMapMemory(allocator, meshUniformsGpuBuffer.allocation, &meshUniformsGpuBuffer.mapped);
+    std::memcpy(meshUniformsGpuBuffer.mapped, meshUniformsVec.data(), meshUniformSize);
+    vmaFlushAllocation(allocator, meshUniformsGpuBuffer.allocation, 0, meshUniformSize);
 
     VkDescriptorBufferInfo descBI{
-        .buffer = meshUniformGpuBuffer.buffer,
+        .buffer = meshUniformsGpuBuffer.buffer,
         .offset = 0,
         .range  = meshUniformSize,
     };
