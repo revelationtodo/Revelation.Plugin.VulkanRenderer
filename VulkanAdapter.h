@@ -27,7 +27,7 @@ struct alignas(16) ShaderData
 {
     glm::mat4 projection = glm::mat4(1);
     glm::mat4 view       = glm::mat4(1);
-    glm::vec4 lightPos   = glm::vec4(0.0f, -1000.0f, 1000.0f, 0.0f);
+    glm::vec4 lightPos   = glm::vec4(1000.0f, 1000.0f, 1000.0f, 0.0f);
     glm::vec4 cameraPos  = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 };
 
@@ -41,15 +41,15 @@ struct alignas(16) PushConstant
     int       textureIndex = -1;
 };
 
-struct ShaderDataBuffer
+struct MappedGpuBuffer
 {
-    VmaAllocation   allocation    = VK_NULL_HANDLE;
     VkBuffer        buffer        = VK_NULL_HANDLE;
+    VmaAllocation   allocation    = VK_NULL_HANDLE;
     VkDeviceAddress deviceAddress = 0;
     void*           mapped        = nullptr;
 };
 
-struct BufferDesc
+struct MeshGpuBuffer
 {
     VkBuffer      buffer     = VK_NULL_HANDLE;
     VmaAllocation allocation = VK_NULL_HANDLE;
@@ -100,26 +100,26 @@ class VulkanAdapter
 
     void CollectMeshes(const Node& node, std::vector<const Mesh*>& out);
     void LoadNode(const Node& node);
-    bool LoadMesh(const Mesh& mesh, std::vector<BufferDesc>& buffers);
+    bool LoadMesh(const Mesh& mesh, std::vector<MeshGpuBuffer>& buffers);
     bool LoadTexture(const Texture& tex, std::vector<TextureResource>& textures);
 
   private:
     VulkanRendererWidget* m_targetWindow = nullptr;
 
-    Parser                m_parser;
-    bool m_ready = false;
+    Parser m_parser;
+    bool   m_ready = false;
 
     //////////////////////////////////////////////////////////////////////////
     // Vulkan related
-    using ShaderDataBuffers   = std::array<ShaderDataBuffer, maxFramesInFlight>;
+    using ShaderDataBuffers   = std::array<MappedGpuBuffer, maxFramesInFlight>;
     using Fences              = std::array<VkFence, maxFramesInFlight>;
     using PresentSemaphores   = std::array<VkSemaphore, maxFramesInFlight>;
     using RenderingSemaphores = std::vector<VkSemaphore>;
     using CommandBuffers      = std::array<VkCommandBuffer, maxFramesInFlight>;
     using SlangGlobalSession  = Slang::ComPtr<slang::IGlobalSession>;
 
-    std::vector<BufferDesc>      modelBuffers;
-    std::vector<glm::mat4>       modelMatrices;
+    std::vector<MeshGpuBuffer>   meshBuffers;
+    std::vector<glm::mat4>       meshMatrices;
     std::vector<TextureResource> textures;
     std::vector<glm::vec4>       diffuseColors;
     std::vector<int>             textureIndexes;

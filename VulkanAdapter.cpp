@@ -106,7 +106,7 @@ void VulkanAdapter::Uninitialize()
         vkDestroyImageView(device, swapchainImageViews[i], nullptr);
     }
 
-    for (const BufferDesc& bufferDesc : modelBuffers)
+    for (const MeshGpuBuffer& bufferDesc : meshBuffers)
     {
         vmaDestroyBuffer(allocator, bufferDesc.buffer, bufferDesc.allocation);
     }
@@ -259,19 +259,19 @@ void VulkanAdapter::Tick(double elapsed)
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
                             0, 1, &descriptorSetTex, 0, nullptr);
 
-    assert(modelBuffers.size() == textureIndexes.size());
-    for (int i = 0; i < modelBuffers.size(); ++i)
+    assert(meshBuffers.size() == textureIndexes.size());
+    for (int i = 0; i < meshBuffers.size(); ++i)
     {
-        pushConstant.model        = modelMatrices[i];
+        pushConstant.model        = meshMatrices[i];
         pushConstant.textureIndex = textureIndexes[i];
         pushConstant.diffuseColor = diffuseColors[i];
 
-        const BufferDesc& bufferDesc = modelBuffers[i];
-        VkDeviceSize      vOffset    = 0;
-        vkCmdBindVertexBuffers(commandBuffer, 0, 1, &bufferDesc.buffer, &vOffset);
-        vkCmdBindIndexBuffer(commandBuffer, bufferDesc.buffer, bufferDesc.offsetOfIndexBuffer, VK_INDEX_TYPE_UINT32);
+        const MeshGpuBuffer& meshBuffer = meshBuffers[i];
+        VkDeviceSize         vOffset    = 0;
+        vkCmdBindVertexBuffers(commandBuffer, 0, 1, &meshBuffer.buffer, &vOffset);
+        vkCmdBindIndexBuffer(commandBuffer, meshBuffer.buffer, meshBuffer.offsetOfIndexBuffer, VK_INDEX_TYPE_UINT32);
         vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstant), &pushConstant);
-        vkCmdDrawIndexed(commandBuffer, bufferDesc.indexCount, 1, 0, 0, 0);
+        vkCmdDrawIndexed(commandBuffer, meshBuffer.indexCount, 1, 0, 0, 0);
     }
 
     vkCmdEndRendering(commandBuffer);
@@ -743,7 +743,7 @@ bool VulkanAdapter::InitVulkanDescriptorSetLayout()
         return false;
     }
 
-    uint32_t                                           variableDescCount{1024};
+    uint32_t                                           variableDescCount = 1024;
     VkDescriptorSetVariableDescriptorCountAllocateInfo variableDescCountAI{
         .sType =
             VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO_EXT,
@@ -759,16 +759,6 @@ bool VulkanAdapter::InitVulkanDescriptorSetLayout()
     {
         return false;
     }
-
-    // VkWriteDescriptorSet writeDescSet{
-    //     .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-    //     .dstSet          = descriptorSetTex,
-    //     .dstBinding      = 0,
-    //     .descriptorCount = 0,
-    //     .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-    //     .pImageInfo      = nullptr};
-    // vkUpdateDescriptorSets(device, 1, &writeDescSet, 0, nullptr);
-
     return true;
 }
 
@@ -1108,8 +1098,8 @@ void VulkanAdapter::LoadNode(const Node& node)
 
     textures.clear();
 
-    std::vector<BufferDesc>            newModelBuffers;
-    std::vector<glm::mat4>             newModelMatrices;
+    std::vector<MeshGpuBuffer>         newMeshBuffers;
+    std::vector<glm::mat4>             newMeshMatrices;
     std::vector<TextureResource>       newTextures;
     std::vector<int>                   newIndexes;
     std::vector<glm::vec4>             newDiffuseColors;
@@ -1120,12 +1110,12 @@ void VulkanAdapter::LoadNode(const Node& node)
 
     for (const Mesh* mesh : meshes)
     {
-        if (!LoadMesh(*mesh, newModelBuffers))
+        if (!LoadMesh(*mesh, newMeshBuffers))
         {
             continue;
         }
 
-        newModelMatrices.push_back(mesh->trans);
+        newMeshMatrices.push_back(mesh->trans);
         int texIndex = -1;
         if (!mesh->material.diffuseTexture.id.empty())
         {
@@ -1162,9 +1152,9 @@ void VulkanAdapter::LoadNode(const Node& node)
     camRotation = glm::quat(1, 0, 0, 0);
 
     // swap & destroy old resources
-    std::swap(modelBuffers, newModelBuffers);
-    std::swap(modelMatrices, newModelMatrices);
-    for (const BufferDesc& bufferDesc : newModelBuffers)
+    std::swap(meshBuffers, newMeshBuffers);
+    std::swap(meshMatrices, newMeshMatrices);
+    for (const MeshGpuBuffer& bufferDesc : newMeshBuffers)
     {
         vmaDestroyBuffer(allocator, bufferDesc.buffer, bufferDesc.allocation);
     }
@@ -1194,9 +1184,9 @@ void VulkanAdapter::LoadNode(const Node& node)
     }
 }
 
-bool VulkanAdapter::LoadMesh(const Mesh& mesh, std::vector<BufferDesc>& buffers)
+bool VulkanAdapter::LoadMesh(const Mesh& mesh, std::vector<MeshGpuBuffer>& buffers)
 {
-    BufferDesc         bufferDesc;
+    MeshGpuBuffer      bufferDesc;
     VkDeviceSize       vbSize = sizeof(Vertex) * mesh.vertices.size();
     VkDeviceSize       ibSize = sizeof(Index) * mesh.indices.size();
     VkBufferCreateInfo bufferCI{
