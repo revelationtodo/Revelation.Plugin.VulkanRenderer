@@ -94,9 +94,21 @@ void VulkanAdapter::Uninitialize()
         vkDestroyFence(device, fences[i], nullptr);
         vkDestroySemaphore(device, presentSemaphores[i], nullptr);
         vkDestroySemaphore(device, renderSemaphores[i], nullptr);
-        vmaUnmapMemory(allocator, shaderDataBuffers[i].allocation);
-        vmaDestroyBuffer(allocator, shaderDataBuffers[i].buffer, shaderDataBuffers[i].allocation);
+        vmaUnmapMemory(allocator, frameUniformGpuBuffers[i].allocation);
+        vmaDestroyBuffer(allocator, frameUniformGpuBuffers[i].buffer, frameUniformGpuBuffers[i].allocation);
     }
+
+    if (nullptr != meshUniformGpuBuffer.mapped)
+    {
+        vmaUnmapMemory(allocator, meshUniformGpuBuffer.allocation);
+    }
+    if (VK_NULL_HANDLE != meshUniformGpuBuffer.buffer)
+    {
+        vmaDestroyBuffer(allocator, meshUniformGpuBuffer.buffer, meshUniformGpuBuffer.allocation);
+    }
+
+    vkDestroyDescriptorSetLayout(device, descriptorSetLayoutMat, nullptr);
+    vkDestroyDescriptorPool(device, descriptorPoolMat, nullptr);
 
     vmaDestroyImage(allocator, depthImage, depthImageAllocation);
     vkDestroyImageView(device, depthImageView, nullptr);
@@ -119,7 +131,7 @@ void VulkanAdapter::Uninitialize()
     }
 
     vkDestroyDescriptorSetLayout(device, descriptorSetLayoutTex, nullptr);
-    vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+    vkDestroyDescriptorPool(device, descriptorPoolTex, nullptr);
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
     vkDestroyPipeline(device, pipeline, nullptr);
     vkDestroySwapchainKHR(device, swapchain, nullptr);
@@ -159,16 +171,16 @@ void VulkanAdapter::Tick(double elapsed)
     }
 
     // update shader data
-    ShaderData shaderData;
-    float      aspect     = (float)m_targetWindow->width() / m_targetWindow->height();
-    shaderData.projection = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 3200.0f);
-    shaderData.projection[1][1] *= -1;
-    shaderData.view      = glm::lookAt(camPosition, navigation, glm::vec3(0, 1, 0));
-    shaderData.cameraPos = glm::vec4(camPosition, 1.0f);
-    memcpy(shaderDataBuffers[frameIndex].mapped, &shaderData, sizeof(ShaderData));
+    FrameUniform frameUniform;
+    float        aspect     = (float)m_targetWindow->width() / m_targetWindow->height();
+    frameUniform.projection = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 3200.0f);
+    frameUniform.projection[1][1] *= -1;
+    frameUniform.view      = glm::lookAt(camPosition, navigation, glm::vec3(0, 1, 0));
+    frameUniform.cameraPos = glm::vec4(camPosition, 1.0f);
+    memcpy(frameUniformGpuBuffers[frameIndex].mapped, &frameUniform, sizeof(FrameUniform));
 
     PushConstant pushConstant;
-    pushConstant.shaderDataAddr = shaderDataBuffers[frameIndex].deviceAddress;
+    pushConstant.shaderDataPerFrameAddr = frameUniformGpuBuffers[frameIndex].deviceAddress;
 
     // command buffers
     VkCommandBuffer commandBuffer = commandBuffers[frameIndex];
@@ -256,15 +268,16 @@ void VulkanAdapter::Tick(double elapsed)
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
-                            0, 1, &descriptorSetTex, 0, nullptr);
+    std::array<VkDescriptorSet, 2> descSets{descriptorSetTex, descriptorSetMat};
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, (uint32_t)descSets.size(), descSets.data(), 0, nullptr);
 
-    assert(meshBuffers.size() == textureIndexes.size());
+    // assert(meshBuffers.size() == textureIndexes.size());
     for (int i = 0; i < meshBuffers.size(); ++i)
     {
-        pushConstant.model        = meshMatrices[i];
-        pushConstant.textureIndex = textureIndexes[i];
-        pushConstant.diffuseColor = diffuseColors[i];
+        // pushConstant.model        = meshMatrices[i];
+        // pushConstant.textureIndex = textureIndexes[i];
+        // pushConstant.diffuseColor = diffuseColors[i];
+        pushConstant.shaderDataPerMeshIndex = i;
 
         const MeshGpuBuffer& meshBuffer = meshBuffers[i];
         VkDeviceSize         vOffset    = 0;
@@ -607,23 +620,23 @@ bool VulkanAdapter::InitVulkanShader()
     {
         VkBufferCreateInfo bufferCI{
             .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            .size  = sizeof(ShaderData),
+            .size  = sizeof(FrameUniform),
             .usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT};
         VmaAllocationCreateInfo bufferAllocCI{
             .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
                      VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT |
                      VMA_ALLOCATION_CREATE_MAPPED_BIT,
             .usage = VMA_MEMORY_USAGE_AUTO};
-        if (!Check(vmaCreateBuffer(allocator, &bufferCI, &bufferAllocCI, &shaderDataBuffers[i].buffer, &shaderDataBuffers[i].allocation, nullptr)))
+        if (!Check(vmaCreateBuffer(allocator, &bufferCI, &bufferAllocCI, &frameUniformGpuBuffers[i].buffer, &frameUniformGpuBuffers[i].allocation, nullptr)))
         {
             return false;
         }
-        vmaMapMemory(allocator, shaderDataBuffers[i].allocation, &shaderDataBuffers[i].mapped);
+        vmaMapMemory(allocator, frameUniformGpuBuffers[i].allocation, &frameUniformGpuBuffers[i].mapped);
 
         VkBufferDeviceAddressInfo bufferDAI{
             .sType  = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-            .buffer = shaderDataBuffers[i].buffer};
-        shaderDataBuffers[i].deviceAddress = vkGetBufferDeviceAddress(device, &bufferDAI);
+            .buffer = frameUniformGpuBuffers[i].buffer};
+        frameUniformGpuBuffers[i].deviceAddress = vkGetBufferDeviceAddress(device, &bufferDAI);
     }
 
     // shader compiler
@@ -711,6 +724,7 @@ bool VulkanAdapter::InitVulkanCommandPools()
 
 bool VulkanAdapter::InitVulkanDescriptorSetLayout()
 {
+    // texture
     VkDescriptorBindingFlags                    descVariableFlag{VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT};
     VkDescriptorSetLayoutBindingFlagsCreateInfo descBindingFlagsCI{
         .sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
@@ -730,15 +744,15 @@ bool VulkanAdapter::InitVulkanDescriptorSetLayout()
         return false;
     }
 
-    VkDescriptorPoolSize poolSize{
+    VkDescriptorPoolSize descPoolSizeTex{
         .type            = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
         .descriptorCount = 1024};
-    VkDescriptorPoolCreateInfo descPoolCI{
+    VkDescriptorPoolCreateInfo descPoolTexCI{
         .sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .maxSets       = 1,
         .poolSizeCount = 1,
-        .pPoolSizes    = &poolSize};
-    if (!Check(vkCreateDescriptorPool(device, &descPoolCI, nullptr, &descriptorPool)))
+        .pPoolSizes    = &descPoolSizeTex};
+    if (!Check(vkCreateDescriptorPool(device, &descPoolTexCI, nullptr, &descriptorPoolTex)))
     {
         return false;
     }
@@ -749,28 +763,72 @@ bool VulkanAdapter::InitVulkanDescriptorSetLayout()
             VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO_EXT,
         .descriptorSetCount = 1,
         .pDescriptorCounts  = &variableDescCount};
-    VkDescriptorSetAllocateInfo texDescSetAlloc{
+    VkDescriptorSetAllocateInfo descTextAI{
         .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .pNext              = &variableDescCountAI,
-        .descriptorPool     = descriptorPool,
+        .descriptorPool     = descriptorPoolTex,
         .descriptorSetCount = 1,
         .pSetLayouts        = &descriptorSetLayoutTex};
-    if (!Check(vkAllocateDescriptorSets(device, &texDescSetAlloc, &descriptorSetTex)))
+    if (!Check(vkAllocateDescriptorSets(device, &descTextAI, &descriptorSetTex)))
     {
         return false;
     }
+
+    // material ssbo
+    VkDescriptorSetLayoutBinding descLayoutBidingMat{
+        .binding         = 0,
+        .descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .descriptorCount = 1,
+        .stageFlags      = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT};
+    VkDescriptorSetLayoutCreateInfo descLayoutMatCI{
+        .sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = 1,
+        .pBindings    = &descLayoutBidingMat};
+    if (!Check(vkCreateDescriptorSetLayout(device, &descLayoutMatCI, nullptr, &descriptorSetLayoutMat)))
+    {
+        return false;
+    }
+
+    VkDescriptorPoolSize descPoolSizeMat{
+        .type            = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .descriptorCount = 1};
+    VkDescriptorPoolCreateInfo descPoolMatCI{
+        .sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .maxSets       = 1,
+        .poolSizeCount = 1,
+        .pPoolSizes    = &descPoolSizeMat};
+    if (!Check(vkCreateDescriptorPool(device, &descPoolMatCI, nullptr, &descriptorPoolMat)))
+    {
+        return false;
+    }
+
+    VkDescriptorSetAllocateInfo descMatAI{
+        .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool     = descriptorPoolMat,
+        .descriptorSetCount = 1,
+        .pSetLayouts        = &descriptorSetLayoutMat,
+    };
+    if (!Check(vkAllocateDescriptorSets(device, &descMatAI, &descriptorSetMat)))
+    {
+        return false;
+    }
+
     return true;
 }
 
 bool VulkanAdapter::InitVulkanPipeline()
 {
+    std::array<VkDescriptorSetLayout, 2> setLayouts{
+        descriptorSetLayoutTex, // set=0 : textures[]
+        descriptorSetLayoutMat  // set=1 : material SSBO
+    };
     VkPushConstantRange pushConstantRange{
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
         .size       = sizeof(PushConstant)};
     VkPipelineLayoutCreateInfo pipelineLayoutCI{
         .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount         = 1,
-        .pSetLayouts            = &descriptorSetLayoutTex,
+        .setLayoutCount         = (uint32_t)setLayouts.size(),
+        .pSetLayouts            = setLayouts.data(),
         .pushConstantRangeCount = 1,
         .pPushConstantRanges    = &pushConstantRange};
     if (!Check(vkCreatePipelineLayout(device, &pipelineLayoutCI, nullptr, &pipelineLayout)))
@@ -1096,14 +1154,10 @@ void VulkanAdapter::LoadNode(const Node& node)
     std::vector<const Mesh*> meshes;
     CollectMeshes(node, meshes);
 
-    textures.clear();
-
     std::vector<MeshGpuBuffer>         newMeshBuffers;
-    std::vector<glm::mat4>             newMeshMatrices;
     std::vector<TextureResource>       newTextures;
-    std::vector<int>                   newIndexes;
-    std::vector<glm::vec4>             newDiffuseColors;
     std::vector<VkDescriptorImageInfo> textureDescriptors;
+    std::vector<MeshUniform>           meshUniforms;
 
     std::unordered_map<std::string, int> texIndexCache;
     texIndexCache.reserve(meshes.size());
@@ -1115,21 +1169,20 @@ void VulkanAdapter::LoadNode(const Node& node)
             continue;
         }
 
-        newMeshMatrices.push_back(mesh->trans);
-        int texIndex = -1;
+        int diffuseTexIndex = -1;
         if (!mesh->material.diffuseTexture.id.empty())
         {
             auto it = texIndexCache.find(mesh->material.diffuseTexture.id);
             if (it != texIndexCache.end())
             {
-                texIndex = it->second;
+                diffuseTexIndex = it->second;
             }
             else
             {
                 if (LoadTexture(mesh->material.diffuseTexture, newTextures))
                 {
-                    texIndex = static_cast<int>(textureDescriptors.size());
-                    texIndexCache.emplace(mesh->material.diffuseTexture.id, texIndex);
+                    diffuseTexIndex = static_cast<int>(textureDescriptors.size());
+                    texIndexCache.emplace(mesh->material.diffuseTexture.id, diffuseTexIndex);
 
                     textureDescriptors.emplace_back(VkDescriptorImageInfo{
                         .sampler     = newTextures.back().sampler,
@@ -1138,13 +1191,17 @@ void VulkanAdapter::LoadNode(const Node& node)
                 }
                 else
                 {
-                    texIndex = -1;
+                    diffuseTexIndex = -1;
                 }
             }
         }
 
-        newIndexes.push_back(texIndex);
-        newDiffuseColors.push_back(mesh->material.baseDiffuseColor);
+        MeshUniform meshUniform;
+        meshUniform.model           = mesh->trans;
+        meshUniform.diffuseColor    = mesh->material.baseDiffuseColor;
+        meshUniform.diffuseTexIndex = diffuseTexIndex;
+
+        meshUniforms.emplace_back(std::move(meshUniform));
     }
 
     navigation  = node.aabb.Center();
@@ -1153,14 +1210,10 @@ void VulkanAdapter::LoadNode(const Node& node)
 
     // swap & destroy old resources
     std::swap(meshBuffers, newMeshBuffers);
-    std::swap(meshMatrices, newMeshMatrices);
     for (const MeshGpuBuffer& bufferDesc : newMeshBuffers)
     {
         vmaDestroyBuffer(allocator, bufferDesc.buffer, bufferDesc.allocation);
     }
-
-    textureIndexes = std::move(newIndexes);
-    diffuseColors  = std::move(newDiffuseColors);
 
     std::swap(textures, newTextures);
     for (const TextureResource& texture : newTextures)
@@ -1170,18 +1223,62 @@ void VulkanAdapter::LoadNode(const Node& node)
         vmaDestroyImage(allocator, texture.image, texture.allocation);
     }
 
-    // update descriptor set
+    // update texture descriptor set
     if (!textureDescriptors.empty())
     {
-        VkWriteDescriptorSet writeDescSet{
+        VkWriteDescriptorSet writeDescSetTex{
             .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .dstSet          = descriptorSetTex,
             .dstBinding      = 0,
             .descriptorCount = static_cast<uint32_t>(textureDescriptors.size()),
             .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
             .pImageInfo      = textureDescriptors.data()};
-        vkUpdateDescriptorSets(device, 1, &writeDescSet, 0, nullptr);
+        vkUpdateDescriptorSets(device, 1, &writeDescSetTex, 0, nullptr);
     }
+
+    // update material ssbo
+    VkDeviceSize meshUniformSize = VkDeviceSize(meshUniforms.size()) * sizeof(MeshUniform);
+    if (nullptr != meshUniformGpuBuffer.mapped)
+    {
+        vmaUnmapMemory(allocator, meshUniformGpuBuffer.allocation);
+        meshUniformGpuBuffer.mapped = nullptr;
+    }
+    if (VK_NULL_HANDLE != meshUniformGpuBuffer.buffer)
+    {
+        vmaDestroyBuffer(allocator, meshUniformGpuBuffer.buffer, meshUniformGpuBuffer.allocation);
+    }
+
+    VkBufferCreateInfo bufferCI{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size  = meshUniformSize,
+        .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT};
+    VmaAllocationCreateInfo bufferAllocCI{
+        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                 VMA_ALLOCATION_CREATE_MAPPED_BIT,
+        .usage = VMA_MEMORY_USAGE_AUTO};
+    VmaAllocationInfo bufferAI{};
+    if (!Check(vmaCreateBuffer(allocator, &bufferCI, &bufferAllocCI, &meshUniformGpuBuffer.buffer, &meshUniformGpuBuffer.allocation, &bufferAI)))
+    {
+        return;
+    }
+    vmaMapMemory(allocator, meshUniformGpuBuffer.allocation, &meshUniformGpuBuffer.mapped);
+    std::memcpy(meshUniformGpuBuffer.mapped, meshUniforms.data(), meshUniformSize);
+    vmaFlushAllocation(allocator, meshUniformGpuBuffer.allocation, 0, meshUniformSize);
+
+    VkDescriptorBufferInfo descBI{
+        .buffer = meshUniformGpuBuffer.buffer,
+        .offset = 0,
+        .range  = meshUniformSize,
+    };
+    VkWriteDescriptorSet writeDescSetMat{
+        .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet          = descriptorSetMat,
+        .dstBinding      = 0,
+        .descriptorCount = 1,
+        .descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .pBufferInfo     = &descBI,
+    };
+    vkUpdateDescriptorSets(device, 1, &writeDescSetMat, 0, nullptr);
 }
 
 bool VulkanAdapter::LoadMesh(const Mesh& mesh, std::vector<MeshGpuBuffer>& buffers)

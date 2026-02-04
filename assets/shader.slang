@@ -1,104 +1,112 @@
 struct VSInput
 {
-    float3 Pos;
-    float3 Normal;
-    float2 UV;
+    float3 position : POSITION;
+    float3 normal   : NORMAL;
+    float2 uv       : TEXCOORD0;
 };
 
-Sampler2D textures[];
-
-struct ShaderData
+struct FrameUniforms
 {
-    float4x4 projection;
+    float4x4 proj;
     float4x4 view;
 
-    float4 lightPos;
-    float4 cameraPos;
+    float4   lightPosWS;
+    float4   cameraPosWS;
 };
 
-struct PushConstant
+struct MeshUniforms
 {
-    uint64_t shaderDataAddr;
     float4x4 model;
-    float4 baseDiffuseColor;
-    int textureIndex;
+
+    float4   baseColor;
+    int      diffuseTexIndex;
+    int      _pad0;
+    int      _pad1;
+    int      _pad2;
+};
+
+struct PushConstants
+{
+    uint64_t frameUniformsAddr;
+    int      meshIndex;
 };
 
 struct VSOutput
 {
-    float4 Pos : SV_POSITION;
+    float4 positionCS : SV_POSITION;
+    float2 uv         : TEXCOORD0;
 
-    float2 UV;
+    // World-space data for lighting
+    float3 normalWS   : TEXCOORD1;
+    float3 lightVecWS : TEXCOORD2;
+    float3 viewVecWS  : TEXCOORD3;
 
-    // world space data for lighting
-    float3 NormalWS;
-    float3 LightVecWS;
-    float3 ViewVecWS;
-
-    int TextureIndex;
-    float4 baseDiffuseColor;
+    int    meshIndex  : TEXCOORD4;
 };
 
+// [[vk::binding(binding, set)]]
+[[vk::binding(0, 0)]]
+Sampler2D gTextures[];
+
+// [[vk::binding(binding, set)]]
+[[vk::binding(0, 1)]]
+StructuredBuffer<MeshUniforms> gMeshUniforms;
+
 [[vk::push_constant]]
-PushConstant pc;
+PushConstants gPC;
 
 [shader("vertex")]
 VSOutput main(VSInput input, uint instanceIndex : SV_VulkanInstanceID)
 {
-    VSOutput output;
+    VSOutput o;
 
-    ShaderData* shaderData = (ShaderData*)pc.shaderDataAddr;
+    FrameUniforms* frame = (FrameUniforms*)gPC.frameUniformsAddr;
 
-    float4x4 M = pc.model;
-    float4x4 V = shaderData->view;
-    float4x4 P = shaderData->projection;
+    float4x4 M = gMeshUniforms[gPC.meshIndex].model;
+    float4x4 V = frame->view;
+    float4x4 P = frame->proj;
 
-    // World position
-    float4 posWS4 = mul(M, float4(input.Pos, 1.0));
+    float4 posWS4 = mul(M, float4(input.position, 1.0));
     float3 posWS  = posWS4.xyz;
 
-    float3 normalWS = input.Normal;
+    o.uv = input.uv;
 
-    output.UV = input.UV;
-
-    // Clip space position
-    output.Pos = mul(P, mul(V, posWS4));
+    // Clip-space position
+    o.positionCS = mul(P, mul(V, posWS4));
 
     // World-space lighting vectors
-    float3 lightPosWS  = shaderData->lightPos.xyz;
-    float3 cameraPosWS = shaderData->cameraPos.xyz;
+    float3 lightPosWS  = frame->lightPosWS.xyz;
+    float3 cameraPosWS = frame->cameraPosWS.xyz;
 
-    output.LightVecWS = lightPosWS - posWS;
-    output.ViewVecWS  = cameraPosWS - posWS;
-    output.NormalWS   = normalWS;
+    o.lightVecWS = lightPosWS - posWS;
+    o.viewVecWS  = cameraPosWS - posWS;
+    o.normalWS   = input.normal;
 
-    output.TextureIndex = pc.textureIndex;
+    o.meshIndex  = gPC.meshIndex;
 
-    output.baseDiffuseColor = pc.baseDiffuseColor;
-
-    return output;
+    return o;
 }
 
 [shader("fragment")]
-float4 main(VSOutput input)
+float4 main(VSOutput input) : SV_Target
 {
-    // Phong lighting in world space
-    float3 N = normalize(input.NormalWS);
-    float3 L = normalize(input.LightVecWS);
-    float3 V = normalize(input.ViewVecWS);
+    float3 N = normalize(input.normalWS);
+    float3 L = normalize(input.lightVecWS);
+    float3 V = normalize(input.viewVecWS);
     float3 R = reflect(-L, N);
 
-    float  ndotl    = max(dot(N, L), 0.0);
-    float3 diffuse  = max(ndotl, 0.0025);
-    float3 specular = pow(max(dot(R, V), 0.0), 16.0) * 0.75;
+    float  ndotl   = max(dot(N, L), 0.0);
+    float3 diffuse = max(ndotl, 0.0025);
+    float3 spec    = pow(max(dot(R, V), 0.0), 16.0) * 0.75;
 
-    // Sample texture
-    float3 albedo = input.baseDiffuseColor.rgb;
-    if (input.TextureIndex >= 0)
+    MeshUniforms mu = gMeshUniforms[input.meshIndex];
+
+    float3 albedo = mu.baseColor.rgb;
+    if (mu.diffuseTexIndex >= 0)
     {
-        albedo = textures[input.TextureIndex].Sample(input.UV).rgb;
+        albedo = gTextures[mu.diffuseTexIndex].Sample(input.uv).rgb;
     }
 
     float3 ambient = float3(0.05, 0.05, 0.05) * albedo;
-    return float4(ambient + diffuse * albedo + specular, 1.0);
+    return float4(ambient + diffuse * albedo + spec, 1.0);
 }
