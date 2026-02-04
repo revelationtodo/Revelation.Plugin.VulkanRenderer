@@ -27,7 +27,7 @@ struct alignas(16) FrameUniforms
 {
     glm::mat4 projection = glm::mat4(1);
     glm::mat4 view       = glm::mat4(1);
-    glm::vec4 lightPos   = glm::vec4(1000.0f, 1000.0f, 1000.0f, 0.0f);
+    glm::vec4 lightDir   = glm::vec4(1.0f, -1.0f, 0.5f, 0.0f);
     glm::vec4 cameraPos  = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 };
 
