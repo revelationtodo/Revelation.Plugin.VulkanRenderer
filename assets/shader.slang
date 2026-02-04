@@ -99,12 +99,12 @@ float4 main(VSOutput input) : SV_Target
     float3 diffuse = max(ndotl, 0.0025);
     float3 spec    = pow(max(dot(R, V), 0.0), 16.0) * 0.75;
 
-    MeshUniforms mu = gMeshUniforms[input.meshIndex];
+    MeshUniforms mesh = gMeshUniforms[input.meshIndex];
 
-    float3 albedo = mu.baseColor.rgb;
-    if (mu.diffuseTexIndex >= 0)
+    float3 albedo = mesh.baseColor.rgb;
+    if (mesh.diffuseTexIndex >= 0)
     {
-        albedo = gTextures[mu.diffuseTexIndex].Sample(input.uv).rgb;
+        albedo = gTextures[mesh.diffuseTexIndex].Sample(input.uv).rgb;
     }
 
     float3 ambient = float3(0.05, 0.05, 0.05) * albedo;
