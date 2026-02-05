@@ -1,4 +1,4 @@
-1. # Vulkan Renderer
+# Vulkan Renderer
 
    A lightweight Vulkan-based renderer plugin for displaying 3D models inside **Revelation TODO**.
 
