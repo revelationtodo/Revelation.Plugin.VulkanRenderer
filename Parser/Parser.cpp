@@ -180,6 +180,14 @@ bool Parser::ParseOneMesh(const aiScene* scene, const aiMesh* aimesh, const std:
             std::string tex = JoinPath(assetDir, ref);
             LoadTexture(tex, scene, mesh.material.normalTexture);
         }
+
+        // orm
+        {
+            std::string ref     = GetTextureRefByType(mat, TextureType::ORM);
+            std::string texPath = JoinPath(assetDir, ref);
+            LoadTexture(texPath, scene, mesh.material.ormTexture);
+        }
+        
     }
 
     outMeshWorldAabb = TransformAabb(mesh.aabb, meshGlobalTrans);
@@ -231,6 +239,23 @@ std::string Parser::GetTextureRefByType(aiMaterial* mat, TextureType type) const
             // old formats
             if (mat->GetTextureCount(aiTextureType_HEIGHT) > 0 &&
                 mat->GetTexture(aiTextureType_HEIGHT, 0, &texPath) == AI_SUCCESS)
+            {
+                return texPath.C_Str();
+            }
+            return {};
+        }
+        case TextureType::ORM:
+        {
+            // glTF / modern formats
+            if (mat->GetTextureCount(aiTextureType_AMBIENT_OCCLUSION) > 0 &&
+                mat->GetTexture(aiTextureType_AMBIENT_OCCLUSION, 0, &texPath) == AI_SUCCESS)
+            {
+                return texPath.C_Str();
+            }
+
+            // old formats
+            if (mat->GetTextureCount(aiTextureType_LIGHTMAP) > 0 &&
+                mat->GetTexture(aiTextureType_LIGHTMAP, 0, &texPath) == AI_SUCCESS)
             {
                 return texPath.C_Str();
             }

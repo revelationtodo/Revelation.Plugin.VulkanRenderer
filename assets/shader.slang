@@ -27,7 +27,7 @@ struct MeshUniforms
     float4 diffuseColor;
     float4 emissiveColor;
 
-    int4 textureIndexes; // [diffuse, emissive, normal, placeholder]
+    int4 textureIndexes; // [diffuse, emissive, normal, orm]
 };
 
 struct PushConstants
@@ -173,7 +173,29 @@ float4 main(VSOutput input) : SV_Target
     float  specPow = 16.0;
     float3 spec    = pow(max(dot(R, V), 0.0), specPow) * 0.75;
 
-    float3 ambient = float3(0.15, 0.15, 0.15) * albedo;
+    // -------------------------
+    // ORM (AO/Roughness/Metallic)
+    // -------------------------
+    float ao = 1.0;
+    // roughness/metallic
+    // float roughness = 1.0;
+    // float metallic  = 0.0;
+
+    if (mesh.textureIndexes.w >= 0)
+    {
+        float3 orm = gTextures[mesh.textureIndexes.w].Sample(input.uv).rgb;
+        ao = orm.r;
+        // roughness = orm.g;
+        // metallic  = orm.b;
+    }
+
+    float aoStrength = 1.0; // 0~1
+    ao = lerp(1.0, ao, aoStrength);
+
+    // -------------------------
+    // Ambient with AO
+    // -------------------------
+    float3 ambient = float3(0.15, 0.15, 0.15) * albedo * ao;
 
     return float4(ambient + diffuse + spec + emissive, 1.0);
 }

@@ -1202,7 +1202,8 @@ void VulkanAdapter::LoadNode(const Node& node)
 
         int diffuseTexIndex  = FindOrLoadTexture(mesh->material.diffuseTexture);
         int emissiveTexIndex = FindOrLoadTexture(mesh->material.emissiveTexture);
-        int normalTexIndex = FindOrLoadTexture(mesh->material.normalTexture);
+        int normalTexIndex   = FindOrLoadTexture(mesh->material.normalTexture);
+        int ormTexIndex      = FindOrLoadTexture(mesh->material.ormTexture);
 
         MeshUniforms meshUniforms;
         meshUniforms.model            = mesh->trans;
@@ -1211,6 +1212,7 @@ void VulkanAdapter::LoadNode(const Node& node)
         meshUniforms.textureIndexes.x = diffuseTexIndex;
         meshUniforms.textureIndexes.y = emissiveTexIndex;
         meshUniforms.textureIndexes.z = normalTexIndex;
+        meshUniforms.textureIndexes.w = ormTexIndex;
 
         meshUniformsVec.emplace_back(std::move(meshUniforms));
     }

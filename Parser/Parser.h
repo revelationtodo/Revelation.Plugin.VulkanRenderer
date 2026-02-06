@@ -40,7 +40,8 @@ enum class TextureType : uint8_t
 {
     Diffuse,
     Emissive,
-    Normal
+    Normal,
+    ORM,
 };
 
 struct Material
@@ -55,6 +56,9 @@ struct Material
 
     // normal
     Texture normalTexture;
+
+    // ORM: // R=AO, G=Roughness[unused], B=Metallic[unused]
+    Texture ormTexture;
 };
 
 struct Mesh
