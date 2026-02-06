@@ -137,7 +137,7 @@ float4 main(VSOutput input) : SV_Target
     float  specPow = 16.0;
     float3 spec    = pow(max(dot(R, V), 0.0), specPow) * 0.75;
 
-    float3 ambient = float3(0.05, 0.05, 0.05) * albedo;
+    float3 ambient = float3(0.15, 0.15, 0.15) * albedo;
 
     // Emissive added at the end (unlit contribution)
     return float4(ambient + diffuse + spec + emissive, 1.0);
