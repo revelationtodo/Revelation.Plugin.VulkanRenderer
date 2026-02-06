@@ -2,105 +2,256 @@
 
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
-#include <assimp/scene.h>
 
-#include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
-#include <cstdint>
-#include <filesystem>
-#include <limits>
-#include <string>
-#include <vector>
+#include <cstring>
 
-static std::string GetDiffuseTexRef(aiMaterial* mat)
+Parser::Parser()  = default;
+Parser::~Parser() = default;
+
+bool Parser::Parse(const std::string& file, Node& node)
+{
+    Assimp::Importer importer;
+    const aiScene*   scene = importer.ReadFile(file, aiProcess_Triangulate | aiProcess_JoinIdenticalVertices |
+                                                         aiProcess_GenSmoothNormals | aiProcess_CalcTangentSpace |
+                                                         aiProcess_OptimizeMeshes | aiProcess_OptimizeGraph);
+
+    if (!scene || !scene->mRootNode)
+    {
+        return false;
+    }
+
+    std::string assetDir = std::filesystem::path(file).parent_path().string();
+    ProcessNodeRecursive(scene, scene->mRootNode, assetDir, glm::mat4(1.0f), node);
+    return true;
+}
+
+// ------------------------------------------------------------
+// node / mesh parsing
+// ------------------------------------------------------------
+void Parser::ProcessNodeRecursive(const aiScene* scene, const aiNode* ain, const std::string& assetDir,
+                                  const glm::mat4& parentGlobal, Node& outNode) const
+{
+    outNode = Node();
+
+    glm::mat4 local  = ToGlm(ain->mTransformation);
+    glm::mat4 global = parentGlobal * local;
+    outNode.trans    = local;
+
+    for (unsigned i = 0; i < ain->mNumMeshes; ++i)
+    {
+        Mesh           m;
+        AxisAlignedBox waabb;
+        ParseOneMesh(scene, scene->mMeshes[ain->mMeshes[i]], assetDir, global, m, waabb);
+        MergeAabb(outNode.aabb, waabb);
+        outNode.meshes.push_back(std::move(m));
+    }
+
+    for (unsigned i = 0; i < ain->mNumChildren; ++i)
+    {
+        Node child;
+        ProcessNodeRecursive(scene, ain->mChildren[i], assetDir, global, child);
+        MergeAabb(outNode.aabb, child.aabb);
+        outNode.children.push_back(std::move(child));
+    }
+}
+
+bool Parser::ParseOneMesh(const aiScene* scene, const aiMesh* aimesh, const std::string& assetDir,
+                          const glm::mat4& meshGlobalTrans, Mesh& outMesh, AxisAlignedBox& outMeshWorldAabb) const
+{
+    Mesh mesh;
+    mesh.trans = meshGlobalTrans;
+
+    for (unsigned i = 0; i < aimesh->mNumVertices; ++i)
+    {
+        Vertex v;
+        auto&  p = aimesh->mVertices[i];
+        v.pos    = {p.x, p.y, p.z};
+        ExpandAabb(mesh.aabb, v.pos);
+
+        if (aimesh->HasNormals())
+        {
+            auto& n  = aimesh->mNormals[i];
+            v.normal = {n.x, n.y, n.z};
+        }
+
+        if (aimesh->HasTextureCoords(0))
+        {
+            auto& t = aimesh->mTextureCoords[0][i];
+            v.uv    = {t.x, 1.0f - t.y};
+        }
+
+        mesh.vertices.push_back(v);
+    }
+
+    for (unsigned i = 0; i < aimesh->mNumFaces; ++i)
+    {
+        const aiFace& f = aimesh->mFaces[i];
+        if (f.mNumIndices == 3)
+        {
+            mesh.indices.push_back(f.mIndices[0]);
+            mesh.indices.push_back(f.mIndices[1]);
+            mesh.indices.push_back(f.mIndices[2]);
+        }
+    }
+
+    if (aimesh->mMaterialIndex >= 0)
+    {
+        aiMaterial* mat = scene->mMaterials[aimesh->mMaterialIndex];
+
+        mesh.material.diffuseColor = GetColorByType(mat, TextureType::Diffuse);
+        {
+            std::string ref = GetTextureRefByType(mat, TextureType::Diffuse);
+            std::string tex = JoinPath(assetDir, ref);
+            LoadTexture(tex, scene, mesh.material.diffuseTexture);
+        }
+
+        mesh.material.emissiveColor = GetColorByType(mat, TextureType::Emissive);
+        {
+            std::string ref = GetTextureRefByType(mat, TextureType::Emissive);
+            std::string tex = JoinPath(assetDir, ref);
+            LoadTexture(tex, scene, mesh.material.emissiveTexture);
+        }
+    }
+
+    outMeshWorldAabb = TransformAabb(mesh.aabb, meshGlobalTrans);
+    outMesh          = std::move(mesh);
+    return true;
+}
+
+std::string Parser::GetTextureRefByType(aiMaterial* mat, TextureType type) const
 {
     aiString texPath;
 
-    if (mat->GetTextureCount(aiTextureType_BASE_COLOR) > 0 &&
-        mat->GetTexture(aiTextureType_BASE_COLOR, 0, &texPath) == AI_SUCCESS)
+    switch (type)
     {
-        return texPath.C_Str();
+        case TextureType::Diffuse:
+        {
+            // glTF 常用 BASE_COLOR；老模型常用 DIFFUSE
+            if (mat->GetTextureCount(aiTextureType_BASE_COLOR) > 0 &&
+                mat->GetTexture(aiTextureType_BASE_COLOR, 0, &texPath) == AI_SUCCESS)
+            {
+                return texPath.C_Str();
+            }
+
+            if (mat->GetTextureCount(aiTextureType_DIFFUSE) > 0 &&
+                mat->GetTexture(aiTextureType_DIFFUSE, 0, &texPath) == AI_SUCCESS)
+            {
+                return texPath.C_Str();
+            }
+            return {};
+        }
+
+        case TextureType::Emissive:
+        {
+            if (mat->GetTextureCount(aiTextureType_EMISSIVE) > 0 &&
+                mat->GetTexture(aiTextureType_EMISSIVE, 0, &texPath) == AI_SUCCESS)
+            {
+                return texPath.C_Str();
+            }
+            return {};
+        }
     }
 
-    if (mat->GetTextureCount(aiTextureType_DIFFUSE) > 0 &&
-        mat->GetTexture(aiTextureType_DIFFUSE, 0, &texPath) == AI_SUCCESS)
-    {
-        return texPath.C_Str();
-    }
-
-    return "";
+    return {};
 }
 
-static glm::vec4 GetDiffuseColor(aiMaterial* mat)
+glm::vec4 Parser::GetColorByType(aiMaterial* mat, TextureType type) const
 {
-    aiColor4D diffuseColor;
-    if (aiGetMaterialColor(mat, AI_MATKEY_COLOR_DIFFUSE, &diffuseColor) == AI_SUCCESS)
+    aiColor4D c;
+
+    switch (type)
     {
-        return glm::vec4(diffuseColor.r, diffuseColor.g, diffuseColor.b, diffuseColor.a);
+        case TextureType::Diffuse:
+        {
+            if (aiGetMaterialColor(mat, AI_MATKEY_COLOR_DIFFUSE, &c) == AI_SUCCESS)
+            {
+                return {c.r, c.g, c.b, c.a};
+            }
+            return glm::vec4(1.0f);
+        }
+
+        case TextureType::Emissive:
+        {
+            if (aiGetMaterialColor(mat, AI_MATKEY_COLOR_EMISSIVE, &c) == AI_SUCCESS)
+            {
+                return {c.r, c.g, c.b, c.a};
+            }
+            return glm::vec4(0.0f);
+        }
     }
-    return glm::vec4(1.0f);
+
+    return glm::vec4(0.0f);
 }
 
-static std::string JoinPath(const std::string& dir, const std::string& rel)
+
+std::string Parser::JoinPath(const std::string& dir, const std::string& rel) const
 {
     if (rel.empty() || rel[0] == '*')
     {
         return rel;
     }
 
-    std::filesystem::path texPath(rel);
-    if (texPath.is_absolute())
+    std::filesystem::path p(rel);
+    if (p.is_absolute())
     {
-        return std::filesystem::weakly_canonical(texPath).string();
+        return std::filesystem::weakly_canonical(p).string();
     }
 
-    std::filesystem::path base(dir);
-    std::filesystem::path full = base / texPath;
-    return std::filesystem::weakly_canonical(full).string();
+    return std::filesystem::weakly_canonical(std::filesystem::path(dir) / p).string();
 }
 
-static bool LoadTexture(const std::string& texPath, const aiScene* scene, Texture& tex)
+bool Parser::LoadTexture(const std::string& texPath, const aiScene* scene, Texture& tex) const
 {
-    if (texPath[0] == '*') // embedded texture
+    if (texPath.empty())
+    {
+        return false;
+    }
+
+    if (texPath[0] == '*')
     {
         int              index = std::atoi(texPath.c_str() + 1);
         const aiTexture* aiTex = scene->mTextures[index];
-        if (aiTex->mHeight == 0) // compressed
+
+        if (aiTex->mHeight == 0)
         {
-            stbi_uc* loaded = stbi_load_from_memory(reinterpret_cast<const uint8_t*>(aiTex->pcData), aiTex->mWidth, &tex.width, &tex.height, &tex.channels, STBI_rgb_alpha);
-            if (!loaded || tex.width == 0 || tex.height == 0)
+            stbi_uc* loaded = stbi_load_from_memory(reinterpret_cast<const uint8_t*>(aiTex->pcData), aiTex->mWidth,
+                                                    &tex.width, &tex.height, &tex.channels, STBI_rgb_alpha);
+            if (!loaded)
             {
                 return false;
             }
 
             tex.channels = 4;
-            size_t size  = size_t(tex.width) * size_t(tex.height) * size_t(tex.channels);
+            size_t size  = size_t(tex.width) * tex.height * tex.channels;
             tex.buffer.assign(loaded, loaded + size);
             stbi_image_free(loaded);
         }
-        else // uncompressed
+        else
         {
-            size_t byteSize = aiTex->mWidth * aiTex->mHeight * 4;
-            tex.buffer.resize(byteSize);
-            memcpy(tex.buffer.data(), aiTex->pcData, byteSize);
-            tex.width  = aiTex->mWidth;
-            tex.height = aiTex->mHeight;
+            tex.width    = aiTex->mWidth;
+            tex.height   = aiTex->mHeight;
+            tex.channels = 4;
+
+            size_t size = size_t(tex.width) * tex.height * tex.channels;
+            tex.buffer.resize(size);
+            std::memcpy(tex.buffer.data(), aiTex->pcData, size);
         }
     }
-    else // regular image file
+    else
     {
         stbi_uc* loaded = stbi_load(texPath.c_str(), &tex.width, &tex.height, &tex.channels, STBI_rgb_alpha);
-        if (!loaded || tex.width == 0 || tex.height == 0)
+        if (!loaded)
         {
             return false;
         }
 
         tex.channels = 4;
-        size_t size  = size_t(tex.width) * size_t(tex.height) * size_t(tex.channels);
+        size_t size  = size_t(tex.width) * tex.height * tex.channels;
         tex.buffer.assign(loaded, loaded + size);
         stbi_image_free(loaded);
     }
@@ -109,9 +260,11 @@ static bool LoadTexture(const std::string& texPath, const aiScene* scene, Textur
     return true;
 }
 
-static glm::mat4 ToGlm(const aiMatrix4x4& m)
+// ------------------------------------------------------------
+// math helpers
+// ------------------------------------------------------------
+glm::mat4 Parser::ToGlm(const aiMatrix4x4& m) const
 {
-    // xelement-wise conversion to glm::mat4 (column-major)
     glm::mat4 r;
     r[0][0] = m.a1;
     r[1][0] = m.a2;
@@ -132,22 +285,24 @@ static glm::mat4 ToGlm(const aiMatrix4x4& m)
     return r;
 }
 
-static void ExpandAabb(AxisAlignedBox& aabb, const glm::vec3& p)
+void Parser::ExpandAabb(AxisAlignedBox& aabb, const glm::vec3& p) const
 {
     aabb.min = glm::min(aabb.min, p);
     aabb.max = glm::max(aabb.max, p);
 }
 
-static void MergeAabb(AxisAlignedBox& dst, const AxisAlignedBox& src)
+void Parser::MergeAabb(AxisAlignedBox& dst, const AxisAlignedBox& src) const
 {
     dst.min = glm::min(dst.min, src.min);
     dst.max = glm::max(dst.max, src.max);
 }
 
-static AxisAlignedBox TransformAabb(const AxisAlignedBox& local, const glm::mat4& M)
+AxisAlignedBox Parser::TransformAabb(const AxisAlignedBox& local,
+                                     const glm::mat4&      M) const
 {
-    const glm::vec3 mn = local.min;
-    const glm::vec3 mx = local.max;
+    AxisAlignedBox   out;
+    const glm::vec3& mn = local.min;
+    const glm::vec3& mx = local.max;
 
     glm::vec3 corners[8] = {
         {mn.x, mn.y, mn.z},
@@ -160,207 +315,10 @@ static AxisAlignedBox TransformAabb(const AxisAlignedBox& local, const glm::mat4
         {mx.x, mx.y, mx.z},
     };
 
-    AxisAlignedBox out;
     for (const auto& c : corners)
     {
         glm::vec4 p = M * glm::vec4(c, 1.0f);
         ExpandAabb(out, glm::vec3(p));
     }
     return out;
-}
-
-// ------------------------------------------------------------
-// Parse one aiMesh -> Mesh
-// Mesh::trans will be set to meshGlobalTrans (global transform)
-// Node::aabb will be merged with meshWorldAabb (world-space)
-// ------------------------------------------------------------
-static bool ParseOneMesh(const aiScene*     scene,
-                         const aiMesh*      aimesh,
-                         const std::string& assetDir,
-                         const glm::mat4&   meshGlobalTrans,
-                         Mesh&              outMesh,
-                         AxisAlignedBox&    outMeshWorldAabb)
-{
-    if (!scene || !aimesh)
-        return false;
-
-    Mesh mesh;
-    mesh.trans = meshGlobalTrans;
-
-    mesh.vertices.reserve(aimesh->mNumVertices);
-
-    const bool hasNormals = aimesh->HasNormals();
-    const bool hasUV0     = aimesh->HasTextureCoords(0);
-
-    // vertices + local aabb
-    for (unsigned int vi = 0; vi < aimesh->mNumVertices; ++vi)
-    {
-        Vertex v{};
-
-        const aiVector3D& p = aimesh->mVertices[vi];
-        v.pos               = glm::vec3(p.x, p.y, p.z);
-        ExpandAabb(mesh.aabb, v.pos);
-
-        if (hasNormals)
-        {
-            const aiVector3D& n = aimesh->mNormals[vi];
-            v.normal            = glm::vec3(n.x, n.y, n.z);
-        }
-        else
-        {
-            v.normal = glm::vec3(0.0f, 1.0f, 0.0f);
-        }
-
-        if (hasUV0)
-        {
-            const aiVector3D& t = aimesh->mTextureCoords[0][vi];
-            v.uv                = glm::vec2(t.x, t.y);
-
-            // keep your original flip
-            v.uv.y = 1.0f - v.uv.y;
-        }
-        else
-        {
-            v.uv = glm::vec2(0.0f);
-        }
-
-        mesh.vertices.push_back(v);
-    }
-
-    // indices
-    std::vector<unsigned int> tmp;
-    tmp.reserve(aimesh->mNumFaces * 3);
-
-    for (unsigned int fi = 0; fi < aimesh->mNumFaces; ++fi)
-    {
-        const aiFace& face = aimesh->mFaces[fi];
-        if (face.mNumIndices != 3)
-            continue;
-
-        tmp.push_back(face.mIndices[0]);
-        tmp.push_back(face.mIndices[1]);
-        tmp.push_back(face.mIndices[2]);
-    }
-
-    unsigned int maxIndex = 0;
-    for (unsigned int idx : tmp)
-        maxIndex = (idx > maxIndex) ? idx : maxIndex;
-
-    if (maxIndex > std::numeric_limits<Index>::max())
-        return false;
-
-    mesh.indices.reserve(tmp.size());
-    for (unsigned int idx : tmp)
-        mesh.indices.push_back(static_cast<Index>(idx));
-
-    // diffuse texture path
-    if (aimesh->mMaterialIndex >= 0 && scene->mMaterials)
-    {
-        auto* mat = scene->mMaterials[aimesh->mMaterialIndex];
-
-        //////////////////////////////////////////////////////////////////////////
-        // diffuse color
-        mesh.material.baseDiffuseColor = GetDiffuseColor(mat);
-
-        // diffuse texture
-        std::string diffuseTex = GetDiffuseTexRef(mat);
-        diffuseTex             = JoinPath(assetDir, diffuseTex);
-        LoadTexture(diffuseTex, scene, mesh.material.diffuseTexture);
-        //////////////////////////////////////////////////////////////////////////
-    }
-
-    // world aabb (transform local aabb by global matrix)
-    outMeshWorldAabb = TransformAabb(mesh.aabb, meshGlobalTrans);
-
-    outMesh = std::move(mesh);
-    return true;
-}
-
-// ------------------------------------------------------------
-// Recursively convert aiNode tree -> your Node tree
-//
-// Node::trans = local transform (aiNode::mTransformation)
-// Mesh::trans = global transform (parentGlobal * nodeLocal)
-//
-// Node::aabb is world-space AABB merged from:
-// - transformed mesh aabb under this node
-// - children's aabb
-// ------------------------------------------------------------
-static void ProcessNodeRecursive(const aiScene*     scene,
-                                 const aiNode*      ain,
-                                 const std::string& assetDir,
-                                 const glm::mat4&   parentGlobal,
-                                 Node&              outNode)
-{
-    // reset
-    outNode.children.clear();
-    outNode.meshes.clear();
-    outNode.aabb  = AxisAlignedBox{};
-    outNode.trans = glm::mat4(1.0f);
-
-    if (!scene || !ain)
-        return;
-
-    // local + global
-    const glm::mat4 local  = ToGlm(ain->mTransformation);
-    const glm::mat4 global = parentGlobal * local;
-
-    outNode.trans = local;
-
-    // meshes attached to this node
-    outNode.meshes.reserve(ain->mNumMeshes);
-    for (unsigned int i = 0; i < ain->mNumMeshes; ++i)
-    {
-        const unsigned int meshIndex = ain->mMeshes[i];
-        if (meshIndex >= scene->mNumMeshes)
-            continue;
-
-        const aiMesh* aimesh = scene->mMeshes[meshIndex];
-
-        Mesh           mesh;
-        AxisAlignedBox meshWorldAabb;
-        if (!ParseOneMesh(scene, aimesh, assetDir, global, mesh, meshWorldAabb))
-            continue;
-
-        MergeAabb(outNode.aabb, meshWorldAabb);
-        outNode.meshes.push_back(std::move(mesh));
-    }
-
-    // children
-    outNode.children.reserve(ain->mNumChildren);
-    for (unsigned int c = 0; c < ain->mNumChildren; ++c)
-    {
-        Node child;
-        ProcessNodeRecursive(scene, ain->mChildren[c], assetDir, global, child);
-
-        MergeAabb(outNode.aabb, child.aabb);
-        outNode.children.push_back(std::move(child));
-    }
-}
-
-Parser::Parser()  = default;
-Parser::~Parser() = default;
-
-bool Parser::Parse(const std::string& file, Node& node)
-{
-    const unsigned int flags =
-        aiProcess_Triangulate |
-        aiProcess_JoinIdenticalVertices |
-        aiProcess_GenSmoothNormals |
-        aiProcess_CalcTangentSpace |
-        aiProcess_ImproveCacheLocality |
-        aiProcess_OptimizeMeshes |
-        aiProcess_OptimizeGraph;
-
-    Assimp::Importer importer;
-    const aiScene*   scene = importer.ReadFile(file, flags);
-    if (!scene || !scene->mRootNode)
-        return false;
-
-    std::filesystem::path filePath(file);
-    const std::string     assetDir = filePath.parent_path().string();
-
-    ProcessNodeRecursive(scene, scene->mRootNode, assetDir, glm::mat4(1.0f), node);
-
-    return (!node.meshes.empty() || !node.children.empty());
 }

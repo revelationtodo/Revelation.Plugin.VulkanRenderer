@@ -35,11 +35,11 @@ struct alignas(16) MeshUniforms
 {
     glm::mat4 model = glm::mat4(1.0f);
 
-    glm::vec4 diffuseColor    = glm::vec4(1.0f);
-    int32_t   diffuseTexIndex = -1;
-    int32_t   _pad0           = 0;
-    int32_t   _pad1           = 0;
-    int32_t   _pad2           = 0;
+    glm::vec4 diffuseColor  = glm::vec4(1.0f);
+    glm::vec4 emissiveColor = glm::vec4(0.0f);
+
+    // [diffuse, emissive, placeholder, placeholder]
+    glm::ivec4 textureIndexes = glm::ivec4(-1);
 };
 
 struct alignas(16) PushConstant

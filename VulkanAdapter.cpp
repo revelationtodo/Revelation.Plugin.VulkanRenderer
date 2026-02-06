@@ -1157,28 +1157,21 @@ void VulkanAdapter::LoadNode(const Node& node)
 
     std::unordered_map<std::string, int> texIndexCache;
     texIndexCache.reserve(meshes.size());
-
-    for (const Mesh* mesh : meshes)
-    {
-        if (!LoadMesh(*mesh, newMeshBuffers))
-        {
-            continue;
-        }
-
+    auto FindOrLoadTexture = [&](const Texture& texture) -> int {
         int diffuseTexIndex = -1;
-        if (!mesh->material.diffuseTexture.id.empty())
+        if (!texture.id.empty())
         {
-            auto it = texIndexCache.find(mesh->material.diffuseTexture.id);
+            auto it = texIndexCache.find(texture.id);
             if (it != texIndexCache.end())
             {
                 diffuseTexIndex = it->second;
             }
             else
             {
-                if (LoadTexture(mesh->material.diffuseTexture, newTextures))
+                if (LoadTexture(texture, newTextures))
                 {
                     diffuseTexIndex = static_cast<int>(textureDescriptors.size());
-                    texIndexCache.emplace(mesh->material.diffuseTexture.id, diffuseTexIndex);
+                    texIndexCache.emplace(texture.id, diffuseTexIndex);
 
                     textureDescriptors.emplace_back(VkDescriptorImageInfo{
                         .sampler     = newTextures.back().sampler,
@@ -1191,11 +1184,25 @@ void VulkanAdapter::LoadNode(const Node& node)
                 }
             }
         }
+        return diffuseTexIndex;
+    };
+
+    for (const Mesh* mesh : meshes)
+    {
+        if (!LoadMesh(*mesh, newMeshBuffers))
+        {
+            continue;
+        }
+
+        int diffuseTexIndex  = FindOrLoadTexture(mesh->material.diffuseTexture);
+        int emissiveTexIndex = FindOrLoadTexture(mesh->material.emissiveTexture);
 
         MeshUniforms meshUniforms;
-        meshUniforms.model           = mesh->trans;
-        meshUniforms.diffuseColor    = mesh->material.baseDiffuseColor;
-        meshUniforms.diffuseTexIndex = diffuseTexIndex;
+        meshUniforms.model            = mesh->trans;
+        meshUniforms.diffuseColor     = mesh->material.diffuseColor;
+        meshUniforms.emissiveColor    = mesh->material.emissiveColor;
+        meshUniforms.textureIndexes.x = diffuseTexIndex;
+        meshUniforms.textureIndexes.y = emissiveTexIndex;
 
         meshUniformsVec.emplace_back(std::move(meshUniforms));
     }
