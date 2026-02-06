@@ -70,6 +70,7 @@
       ```
 
    2. **Add the Vulkan Renderer plugin**
+   
       Navigate to the SourceCode directory inside the Revelation project, then clone this repository:
 
       ```bash
@@ -78,6 +79,7 @@
       ```
 
    3. **Merge vcpkg dependencies**
+   
       Some dependencies defined in:
 
       ```bash
@@ -92,10 +94,11 @@
       ```
 
    5. **Build Revelation**
+   
       Follow the build instructions provided in the main Revelation repository:
       https://github.com/revelationtodo/Revelation
 
-   6. Build and Run
+   6. **Build and Run**
 
       After completing the engine setup:
 
