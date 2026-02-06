@@ -173,7 +173,7 @@ void VulkanAdapter::Tick(double elapsed)
     // update shader data
     FrameUniforms frameUniforms;
     float         aspect     = (float)m_targetWindow->width() / m_targetWindow->height();
-    frameUniforms.projection = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 3200.0f);
+    frameUniforms.projection = glm::perspective(glm::radians(45.0f), aspect, 0.01f, 3200.0f);
     frameUniforms.projection[1][1] *= -1;
     frameUniforms.view      = glm::lookAt(camPosition, navigation, glm::vec3(0, 1, 0));
     frameUniforms.cameraPos = glm::vec4(camPosition, 1.0f);
@@ -1025,7 +1025,7 @@ void VulkanAdapter::PollInputEvents(double elapsed)
                 glm::vec3   gazeDir = camPosition - navigation;
                 glm::vec3   dir     = glm::normalize(gazeDir);
                 float       dist    = glm::length(gazeDir);
-                const float minDist = 0.05f;
+                const float minDist = 0.02f;
                 const float maxDist = 1e6f;
                 float       steps   = data.deltaY / 120.0f;
                 const float k       = 0.15f;
@@ -1202,6 +1202,7 @@ void VulkanAdapter::LoadNode(const Node& node)
 
         int diffuseTexIndex  = FindOrLoadTexture(mesh->material.diffuseTexture);
         int emissiveTexIndex = FindOrLoadTexture(mesh->material.emissiveTexture);
+        int normalTexIndex = FindOrLoadTexture(mesh->material.normalTexture);
 
         MeshUniforms meshUniforms;
         meshUniforms.model            = mesh->trans;
@@ -1209,6 +1210,7 @@ void VulkanAdapter::LoadNode(const Node& node)
         meshUniforms.emissiveColor    = mesh->material.emissiveColor;
         meshUniforms.textureIndexes.x = diffuseTexIndex;
         meshUniforms.textureIndexes.y = emissiveTexIndex;
+        meshUniforms.textureIndexes.z = normalTexIndex;
 
         meshUniformsVec.emplace_back(std::move(meshUniforms));
     }

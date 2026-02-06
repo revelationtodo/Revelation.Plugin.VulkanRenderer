@@ -4,6 +4,7 @@ struct VSInput
     float3 normal   : NORMAL;
     float2 uv       : TEXCOORD0;
     float4 color    : COLOR0;
+    float4 tangent  : TANGENT;   // xyz = tangent, w = handedness
 };
 
 struct FrameUniforms
@@ -26,7 +27,7 @@ struct MeshUniforms
     float4 diffuseColor;
     float4 emissiveColor;
 
-    int4 textureIndexes; // [diffuse, emissive, placeholder, placeholder]
+    int4 textureIndexes; // [diffuse, emissive, normal, placeholder]
 };
 
 struct PushConstants
@@ -42,12 +43,14 @@ struct VSOutput
     float4 positionCS : SV_POSITION;
     float2 uv         : TEXCOORD0;
 
-    float3 normalWS   : TEXCOORD1;
-    float3 lightVecWS : TEXCOORD2;
-    float3 viewVecWS  : TEXCOORD3;
+    float3 posWS      : TEXCOORD1; // NEW: for per-pixel view vector
+    float3 normalWS   : TEXCOORD2;
+    float3 tangentWS  : TEXCOORD3; // NEW
+    float  tangentW   : TEXCOORD4; // NEW (handedness)
 
-    float4 color      : TEXCOORD4;
-    int    meshIndex  : TEXCOORD5;
+    float3 lightVecWS : TEXCOORD5;
+    float4 color      : TEXCOORD6;
+    int    meshIndex  : TEXCOORD7;
 };
 
 [[vk::binding(0, 0)]]
@@ -85,19 +88,32 @@ VSOutput main(VSInput input, uint instanceIndex : SV_VulkanInstanceID)
     o.uv    = input.uv;
     o.color = input.color;
 
+    o.posWS = posWS;
     o.positionCS = mul(P, mul(V, posWS4));
-
-    float3 cameraPosWS = frame->cameraPosWS.xyz;
-    o.viewVecWS = cameraPosWS - posWS;
 
     float3 lightDirWS = safeNormalize(frame->lightDirWS.xyz);
     o.lightVecWS = -lightDirWS;
 
     float3x3 normalMat = (float3x3)M;
-    o.normalWS = safeNormalize(mul(normalMat, input.normal));
+
+    float3 N = safeNormalize(mul(normalMat, input.normal));
+    float3 T = safeNormalize(mul(normalMat, input.tangent.xyz));
+
+    // Orthonormalize T against N (helps if import isn't perfect)
+    T = safeNormalize(T - N * dot(N, T));
+
+    o.normalWS  = N;
+    o.tangentWS = T;
+    o.tangentW  = input.tangent.w;
 
     o.meshIndex = gPC.meshIndex;
     return o;
+}
+
+// Decode tangent-space normal from texture (assumes stored in [0,1])
+float3 decodeNormalTS(float3 n)
+{
+    return n * 2.0 - 1.0;
 }
 
 [shader("fragment")]
@@ -121,13 +137,33 @@ float4 main(VSOutput input) : SV_Target
     float3 emissive = mesh.emissiveColor.rgb;
     if (mesh.textureIndexes.y >= 0)
     {
-        // emissiveTexture * emissiveFactor (common convention)
         emissive *= gTextures[mesh.textureIndexes.y].Sample(input.uv).rgb;
     }
 
+    // -------------------------
+    // Build TBN + Normal Map
+    // -------------------------
     float3 N = safeNormalize(input.normalWS);
+    float3 T = safeNormalize(input.tangentWS);
+    float3 B = safeNormalize(cross(N, T)) * (input.tangentW >= 0.0 ? 1.0 : -1.0);
+
+    float3x3 TBN = float3x3(T, B, N); // columns: T,B,N (matches mul(TBN, nTS))
+
+    if (mesh.textureIndexes.z >= 0)
+    {
+        float3 nTex = gTextures[mesh.textureIndexes.z].Sample(input.uv).xyz;
+        float3 nTS  = decodeNormalTS(nTex);
+        // If your normal maps look "inside-out", try flipping Y:
+        // nTS.y = -nTS.y;
+        N = safeNormalize(mul(TBN, nTS));
+    }
+
+    // -------------------------
+    // Lighting vectors
+    // -------------------------
+    FrameUniforms* frame = (FrameUniforms*)gPC.frameUniformsAddr;
+    float3 V = safeNormalize(frame->cameraPosWS.xyz - input.posWS);
     float3 L = safeNormalize(input.lightVecWS);
-    float3 V = safeNormalize(input.viewVecWS);
 
     float ndotl = max(dot(N, L), 0.0);
 
@@ -139,6 +175,5 @@ float4 main(VSOutput input) : SV_Target
 
     float3 ambient = float3(0.15, 0.15, 0.15) * albedo;
 
-    // Emissive added at the end (unlit contribution)
     return float4(ambient + diffuse + spec + emissive, 1.0);
 }

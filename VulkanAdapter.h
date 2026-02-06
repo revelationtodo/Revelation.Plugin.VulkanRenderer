@@ -38,7 +38,7 @@ struct alignas(16) MeshUniforms
     glm::vec4 diffuseColor  = glm::vec4(1.0f);
     glm::vec4 emissiveColor = glm::vec4(0.0f);
 
-    // [diffuse, emissive, placeholder, placeholder]
+    // [diffuse, emissive, diffuse, placeholder]
     glm::ivec4 textureIndexes = glm::ivec4(-1);
 };
 
