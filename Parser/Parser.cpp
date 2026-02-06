@@ -85,6 +85,12 @@ bool Parser::ParseOneMesh(const aiScene* scene, const aiMesh* aimesh, const std:
             v.uv    = {t.x, 1.0f - t.y};
         }
 
+        if (aimesh->HasVertexColors(0))
+        {
+            const aiColor4D c = aimesh->mColors[0][i];
+            v.color           = {c.r, c.g, c.b, c.a};
+        }
+
         mesh.vertices.push_back(v);
     }
 

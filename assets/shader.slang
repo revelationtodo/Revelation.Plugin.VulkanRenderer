@@ -3,6 +3,7 @@ struct VSInput
     float3 position : POSITION;
     float3 normal   : NORMAL;
     float2 uv       : TEXCOORD0;
+    float4 color    : COLOR0;
 };
 
 struct FrameUniforms
@@ -41,12 +42,12 @@ struct VSOutput
     float4 positionCS : SV_POSITION;
     float2 uv         : TEXCOORD0;
 
-    // World-space data for lighting
     float3 normalWS   : TEXCOORD1;
-    float3 lightVecWS : TEXCOORD2; // for directional light: constant per-vertex
+    float3 lightVecWS : TEXCOORD2;
     float3 viewVecWS  : TEXCOORD3;
 
-    int    meshIndex  : TEXCOORD4;
+    float4 color      : TEXCOORD4;
+    int    meshIndex  : TEXCOORD5;
 };
 
 [[vk::binding(0, 0)]]
@@ -81,7 +82,8 @@ VSOutput main(VSInput input, uint instanceIndex : SV_VulkanInstanceID)
     float4 posWS4 = mul(M, float4(input.position, 1.0));
     float3 posWS  = posWS4.xyz;
 
-    o.uv = input.uv;
+    o.uv    = input.uv;
+    o.color = input.color;
 
     o.positionCS = mul(P, mul(V, posWS4));
 
@@ -107,9 +109,10 @@ float4 main(VSOutput input) : SV_Target
     // Diffuse (albedo)
     // -------------------------
     float3 albedo = mesh.diffuseColor.rgb;
+    albedo *= input.color.rgb; // glTF: baseColorFactor * vertexColor * baseColorTexture
     if (mesh.textureIndexes.x >= 0)
     {
-        albedo = gTextures[mesh.textureIndexes.x].Sample(input.uv).rgb;
+        albedo *= gTextures[mesh.textureIndexes.x].Sample(input.uv).rgb;
     }
 
     // -------------------------

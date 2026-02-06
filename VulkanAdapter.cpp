@@ -861,7 +861,13 @@ bool VulkanAdapter::InitVulkanPipeline()
             .location = 2,
             .binding  = 0,
             .format   = VK_FORMAT_R32G32_SFLOAT,
-            .offset   = offsetof(Vertex, uv)}};
+            .offset   = offsetof(Vertex, uv)},
+        VkVertexInputAttributeDescription{
+            .location = 3,
+            .binding  = 0,
+            .format   = VK_FORMAT_R32G32B32A32_SFLOAT,
+            .offset   = offsetof(Vertex, color)},
+    };
     VkPipelineVertexInputStateCreateInfo vertexInputStageCI{
         .sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
         .vertexBindingDescriptionCount   = 1,
