@@ -1,4 +1,4 @@
-1. # Vulkan Renderer
+ # Vulkan Renderer
 
    A lightweight Vulkan-based renderer plugin for displaying 3D models inside **Revelation TODO**.
 
@@ -16,7 +16,7 @@
    1. Download and install the Vulkan SDK from the official website: [Vulkan](https://vulkan.lunarg.com/)
    2. Download **Revelation TODO** from the [Releases](https://github.com/revelationtodo/Revelation/releases) page.
    3. Download the **Vulkan Renderer** plugin from this repository’s release page.
-   4. Extract the downloaded `.zip` file into the Revelation installation directory.
+   4. Extract the downloaded `.7z` file into the Revelation installation directory.
    5. Launch `Revelation.exe` and open the **Vulkan Renderer** plugin page.
    6. Drag any supported 3D model file into the renderer window.
    7. The model will be loaded and rendered once the import process is complete.
@@ -34,7 +34,7 @@
    1. 从 [Vulkan](https://vulkan.lunarg.com/) 页面下载 **Vulkan SDK**。
    2. 从 [Releases](https://github.com/revelationtodo/Revelation/releases) 页面下载 **Revelation TODO** 主程序。
    3. 从本仓库的发布页面下载 **Vulkan Renderer** 插件。
-   4. 将下载的 `.zip` 文件解压到 Revelation 的安装目录中。
+   4. 将下载的 `.7z` 中的所有文件夹及文件解压到 Revelation 的安装目录中。
    5. 启动 `Revelation.exe`，并切换到 **Vulkan Renderer** 插件页面。
    6. 将任意支持格式的 3D 模型文件拖拽到渲染窗口中。
    7. 模型加载完成后，将自动显示并渲染在窗口中。
