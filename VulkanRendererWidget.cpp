@@ -12,6 +12,8 @@ VulkanRendererWidget::VulkanRendererWidget()
 
 VulkanRendererWidget::~VulkanRendererWidget()
 {
+    m_frameTimer.stop();
+
     delete m_adapter;
 }
 
