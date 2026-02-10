@@ -28,7 +28,7 @@ struct alignas(16) FrameUniforms
     glm::mat4 projection = glm::mat4(1);
     glm::mat4 view       = glm::mat4(1);
     glm::vec4 lightDir   = glm::vec4(1.0f, -1.0f, 0.5f, 0.0f);
-    glm::vec4 cameraPos  = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    glm::vec4 cameraPos  = glm::vec4(0.0f);
 };
 
 struct alignas(16) MeshUniforms
@@ -99,11 +99,14 @@ class VulkanAdapter
     bool InitVulkanQueue();
     bool InitVmaAllocator();
     bool InitVulkanSwapchain();
-    bool InitVulkanShader();
+    bool InitVulkanMeshShader();
+    bool InitVulkanSkyboxShader();
     bool InitVulkanSyncObjects();
     bool InitVulkanCommandPools();
-    bool InitVulkanDescriptorSetLayout();
-    bool InitVulkanPipeline();
+    bool InitVulkanMeshDescriptorSetLayout();
+    bool InitVulkanSkyboxDescriptorSetLayout();
+    bool InitVulkanMeshPipeline();
+    bool InitVulkanSkyboxPipeline();
 
     void PollInputEvents(double elapsed);
 
@@ -113,6 +116,9 @@ class VulkanAdapter
     void LoadNode(const Node& node);
     bool LoadMesh(const Mesh& mesh, std::vector<MeshGpuBuffer>& buffers);
     bool LoadTexture(const Texture& tex, std::vector<TextureResource>& textures);
+
+    bool GenerateSkyboxBuffer();
+    bool LoadSkybox(const std::string& path);
 
   private:
     VulkanRendererWidget* m_targetWindow = nullptr;
@@ -132,11 +138,14 @@ class VulkanAdapter
     std::vector<MeshGpuBuffer>   meshBuffers;
     std::vector<TextureResource> textures;
 
+    MeshGpuBuffer   skyboxBuffer;
+    TextureResource skyboxTexture;
+
     MappedGpuBuffer meshUniformsGpuBuffer;
 
-    glm::vec3 navigation  = glm::vec3(0);
-    glm::vec3 camPosition = glm::vec3(0);
-    glm::quat camRotation = glm::quat(1, 0, 0, 0);
+    glm::vec3 navigation  = glm::vec3(0.0f);
+    glm::vec3 camPosition = glm::vec3(0.0f, 0.0f, -1.0f);
+    glm::quat camRotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 
     uint32_t   imageIndex = 0;
     uint32_t   frameIndex = 0;
@@ -157,7 +166,8 @@ class VulkanAdapter
     VmaAllocation            depthImageAllocation = VK_NULL_HANDLE;
     VkImageView              depthImageView       = VK_NULL_HANDLE;
     FrameUniformsGpuBuffers  frameUniformGpuBuffers;
-    VkShaderModule           shaderModule = VK_NULL_HANDLE;
+    VkShaderModule           meshShader   = VK_NULL_HANDLE;
+    VkShaderModule           skyboxShader = VK_NULL_HANDLE;
     SlangGlobalSession       slangGlobalSession;
     Fences                   fences;
     PresentSemaphores        presentSemaphores;
@@ -170,7 +180,12 @@ class VulkanAdapter
     VkDescriptorSetLayout    descriptorSetLayoutMat = VK_NULL_HANDLE;
     VkDescriptorPool         descriptorPoolMat      = VK_NULL_HANDLE;
     VkDescriptorSet          descriptorSetMat       = VK_NULL_HANDLE;
-    VkPipelineLayout         pipelineLayout         = VK_NULL_HANDLE;
-    VkPipeline               pipeline               = VK_NULL_HANDLE;
+    VkPipelineLayout         meshPipelineLayout     = VK_NULL_HANDLE;
+    VkPipeline               meshPipeline           = VK_NULL_HANDLE;
+    VkDescriptorSetLayout    descriptorSetLayoutSky = VK_NULL_HANDLE;
+    VkDescriptorPool         descriptorPoolSky      = VK_NULL_HANDLE;
+    VkDescriptorSet          descriptorSetSky       = VK_NULL_HANDLE;
+    VkPipelineLayout         skyboxPipelineLayout   = VK_NULL_HANDLE;
+    VkPipeline               skyboxPipeline         = VK_NULL_HANDLE;
     //////////////////////////////////////////////////////////////////////////
 };

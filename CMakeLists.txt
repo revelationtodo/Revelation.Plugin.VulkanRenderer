@@ -19,6 +19,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_library(Slang_LIBRARY NAMES slang HINTS "$ENV{VULKAN_SDK}/lib" REQUIRED)
+find_package(ktx CONFIG REQUIRED)
 find_package(assimp CONFIG REQUIRED)
 
 if(WIN32)
@@ -73,7 +74,7 @@ endif()
 
 add_definitions(-D_CRT_SECURE_NO_WARNINGS -DVK_NO_PROTOTYPES)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE assimp::assimp ${Slang_LIBRARY})
+target_link_libraries(${PROJECT_NAME} PRIVATE assimp::assimp KTX::ktx ${Slang_LIBRARY})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Widgets)
 target_link_libraries(${PROJECT_NAME} PRIVATE FluUtils)
@@ -83,36 +84,33 @@ target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../FluentUI/FluControls)
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../FluentUI/FluUtils)
 
+# resource copy
 if(CMAKE_CONFIGURATION_TYPES)
-    add_custom_target(ShaderResourceCopy
-        COMMAND ${CMAKE_COMMAND} -E remove_directory
-                ${REVELATION_OUTPUT_DIR}/$<CONFIG>/resources/shaders
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-                ${CMAKE_CURRENT_SOURCE_DIR}/assets
-                ${REVELATION_OUTPUT_DIR}/$<CONFIG>/resources/shaders
-
-        COMMAND ${CMAKE_COMMAND} -E remove_directory 
-                ${PROJECT_BINARY_DIR}/../Revelation/resources/shaders
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-                ${CMAKE_CURRENT_SOURCE_DIR}/assets
-                ${PROJECT_BINARY_DIR}/../Revelation/resources/shaders
-    )
-
-    message(${PROJECT_BINARY_DIR}/Revelation/resources/shaders)
+    set(RENDERER_RES_DST ${REVELATION_OUTPUT_DIR}/$<CONFIG>/resources)
 else()
-    add_custom_target(ShaderResourceCopy
-        COMMAND ${CMAKE_COMMAND} -E remove_directory
-                ${REVELATION_OUTPUT_DIR}/${CMAKE_BUILD_TYPE}/resources/shaders
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-                ${CMAKE_CURRENT_SOURCE_DIR}/assets
-                ${REVELATION_OUTPUT_DIR}/${CMAKE_BUILD_TYPE}/resources/shaders
-
-        COMMAND ${CMAKE_COMMAND} -E remove_directory 
-                ${PROJECT_BINARY_DIR}/../Revelation/resources/shaders
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-                ${CMAKE_CURRENT_SOURCE_DIR}/assets
-                ${PROJECT_BINARY_DIR}/../Revelation/resources/shaders
-    )
+    set(RENDERER_RES_DST ${REVELATION_OUTPUT_DIR}/${CMAKE_BUILD_TYPE}/resources)
 endif()
 
-set_property(TARGET ShaderResourceCopy PROPERTY FOLDER ResourceCopy)
+set(REVELATION_RES_DST ${PROJECT_BINARY_DIR}/../Revelation/resources)
+
+add_custom_target(RendererResourceCopy)
+
+set(RENDERER_RESOURCE_DIRS shader skybox)
+foreach(dir IN LISTS RENDERER_RESOURCE_DIRS)
+    add_custom_command(TARGET RendererResourceCopy PRE_BUILD
+        COMMAND ${CMAKE_COMMAND} -E remove_directory
+                ${RENDERER_RES_DST}/${dir}
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_CURRENT_SOURCE_DIR}/resources/${dir}
+                ${RENDERER_RES_DST}/${dir}
+
+        COMMAND ${CMAKE_COMMAND} -E remove_directory
+                ${REVELATION_RES_DST}/${dir}
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_CURRENT_SOURCE_DIR}/resources/${dir}
+                ${REVELATION_RES_DST}/${dir}
+    )
+endforeach()
+
+set_property(TARGET RendererResourceCopy PROPERTY FOLDER ResourceCopy)
+add_dependencies(VulkanRenderer RendererResourceCopy)
