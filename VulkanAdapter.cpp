@@ -128,6 +128,8 @@ void VulkanAdapter::Uninitialize()
         vmaDestroyBuffer(allocator, bufferDesc.buffer, bufferDesc.allocation);
     }
 
+    vmaDestroyBuffer(allocator, skyboxBuffer.buffer, skyboxBuffer.allocation);
+
     for (const TextureResource& texture : textures)
     {
         vkDestroyImageView(device, texture.view, nullptr);
@@ -135,8 +137,14 @@ void VulkanAdapter::Uninitialize()
         vmaDestroyImage(allocator, texture.image, texture.allocation);
     }
 
+    vkDestroyImageView(device, skyboxTexture.view, nullptr);
+    vkDestroySampler(device, skyboxTexture.sampler, nullptr);
+    vmaDestroyImage(allocator, skyboxTexture.image, skyboxTexture.allocation);
+
     vkDestroyDescriptorSetLayout(device, descriptorSetLayoutTex, nullptr);
+    vkDestroyDescriptorSetLayout(device, descriptorSetLayoutSky, nullptr);
     vkDestroyDescriptorPool(device, descriptorPoolTex, nullptr);
+    vkDestroyDescriptorPool(device, descriptorPoolSky, nullptr);
     vkDestroyPipelineLayout(device, meshPipelineLayout, nullptr);
     vkDestroyPipeline(device, meshPipeline, nullptr);
     vkDestroySwapchainKHR(device, swapchain, nullptr);
