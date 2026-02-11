@@ -136,7 +136,7 @@ class VulkanAdapter
     using SlangGlobalSession      = Slang::ComPtr<slang::IGlobalSession>;
 
     std::vector<MeshGpuBuffer>   meshBuffers;
-    std::vector<TextureResource> textures;
+    std::vector<TextureResource> meshTextures;
 
     MeshGpuBuffer   skyboxBuffer;
     TextureResource skyboxTexture;

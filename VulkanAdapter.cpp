@@ -130,7 +130,7 @@ void VulkanAdapter::Uninitialize()
 
     vmaDestroyBuffer(allocator, skyboxBuffer.buffer, skyboxBuffer.allocation);
 
-    for (const TextureResource& texture : textures)
+    for (const TextureResource& texture : meshTextures)
     {
         vkDestroyImageView(device, texture.view, nullptr);
         vkDestroySampler(device, texture.sampler, nullptr);
@@ -1437,7 +1437,7 @@ void VulkanAdapter::LoadNode(const Node& node)
         vmaDestroyBuffer(allocator, bufferDesc.buffer, bufferDesc.allocation);
     }
 
-    std::swap(textures, newTextures);
+    std::swap(meshTextures, newTextures);
     for (const TextureResource& texture : newTextures)
     {
         vkDestroyImageView(device, texture.view, nullptr);
