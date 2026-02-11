@@ -55,7 +55,7 @@ void VulkanAdapter::Initialize()
     }
 
     // init vulkan shader
-    if (!InitVulkanMeshShader() || !InitVulkanSkyboxShader())
+    if (!InitVulkanMeshShader() || !InitVulkanLineShader() || !InitVulkanSkyboxShader())
     {
         return;
     }
@@ -79,10 +79,12 @@ void VulkanAdapter::Initialize()
     }
 
     // init vulkan pipeline
-    if (!InitVulkanMeshPipeline() || !InitVulkanSkyboxPipeline())
+    if (!InitVulkanMeshPipeline() || !InitVulkanLinePipeline() || !InitVulkanSkyboxPipeline())
     {
         return;
     }
+
+    GenerateAxisGridBuffer();
 
     GenerateSkyboxBuffer();
     LoadSkybox("resources/skybox/cloudy01.ktx2");
@@ -186,7 +188,7 @@ void VulkanAdapter::Tick(double elapsed)
     // update shader data
     FrameUniforms frameUniforms;
     float         aspect     = (float)m_targetWindow->width() / m_targetWindow->height();
-    frameUniforms.projection = glm::perspective(glm::radians(45.0f), aspect, 0.01f, 3200.0f);
+    frameUniforms.projection = glm::perspective(glm::radians(45.0f), aspect, 0.01f, 100000.0f);
     frameUniforms.projection[1][1] *= -1;
     frameUniforms.view      = glm::lookAt(camPosition, navigation, glm::vec3(0, 1, 0));
     frameUniforms.cameraPos = glm::vec4(camPosition, 1.0f);
@@ -292,6 +294,17 @@ void VulkanAdapter::Tick(double elapsed)
         vkCmdDrawIndexed(commandBuffer, skyboxBuffer.indexCount, 1, 0, 0, 0);
     }
     // --- draw skybox end ---
+
+    // --- draw axis and grid begin ---
+    if (linePipeline != VK_NULL_HANDLE && axisGridBuffer.buffer != VK_NULL_HANDLE && axisGridBuffer.indexCount > 0)
+    {
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, linePipeline);
+        vkCmdPushConstants(commandBuffer, linePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstant), &pushConstant);
+        VkDeviceSize vOffset = 0;
+        vkCmdBindVertexBuffers(commandBuffer, 0, 1, &axisGridBuffer.buffer, &vOffset);
+        vkCmdDraw(commandBuffer, axisGridBuffer.indexCount, 1, 0, 0);
+    }
+    // --- draw axis and grid end ---
 
     // --- draw mesh begin ---
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline);
@@ -680,14 +693,70 @@ bool VulkanAdapter::InitVulkanMeshShader()
     slangGlobalSession->createSession(slangSessionDesc, slangSession.writeRef());
 
     Slang::ComPtr<slang::IModule> slangModule{slangSession->loadModuleFromSource("triangle", "resources/shader/mesh_shader.slang", nullptr, nullptr)};
-    Slang::ComPtr<ISlangBlob>     spirv;
+    if (!slangModule)
+    {
+        std::cerr << "Failed to load mesh_shader.slang\n";
+        return false;
+    }
+
+    Slang::ComPtr<ISlangBlob> spirv;
     slangModule->getTargetCode(0, spirv.writeRef());
+    if (!spirv)
+    {
+        std::cerr << "Failed to compile mesh shader to SPIR-V\n";
+        return false;
+    }
 
     VkShaderModuleCreateInfo shaderModuleCI{
         .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize = spirv->getBufferSize(),
         .pCode    = (uint32_t*)spirv->getBufferPointer()};
     vkCreateShaderModule(device, &shaderModuleCI, nullptr, &meshShader);
+
+    return true;
+}
+
+bool VulkanAdapter::InitVulkanLineShader()
+{
+    // shader compiler
+    std::array<slang::TargetDesc, 1> slangTargets{
+        slang::TargetDesc{.format{SLANG_SPIRV},
+                          .profile{slangGlobalSession->findProfile("spirv_1_4")}}};
+    std::array<slang::CompilerOptionEntry, 1> slangOptions{
+        slang::CompilerOptionEntry{slang::CompilerOptionName::EmitSpirvDirectly,
+                                   slang::CompilerOptionValue{slang::CompilerOptionValueKind::Int, 1}}};
+    slang::SessionDesc slangSessionDesc{
+        .targets                  = slangTargets.data(),
+        .targetCount              = SlangInt(slangTargets.size()),
+        .defaultMatrixLayoutMode  = SLANG_MATRIX_LAYOUT_COLUMN_MAJOR,
+        .compilerOptionEntries    = slangOptions.data(),
+        .compilerOptionEntryCount = (uint32_t)slangOptions.size()};
+    Slang::ComPtr<slang::ISession> slangSession;
+    slangGlobalSession->createSession(slangSessionDesc, slangSession.writeRef());
+
+    Slang::ComPtr<slang::IModule> slangModule{slangSession->loadModuleFromSource("line", "resources/shader/line_shader.slang", nullptr, nullptr)};
+    if (!slangModule)
+    {
+        std::cerr << "Failed to load line_shader.slang\n";
+        return false;
+    }
+
+    Slang::ComPtr<ISlangBlob> spirv;
+    slangModule->getTargetCode(0, spirv.writeRef());
+    if (!spirv)
+    {
+        std::cerr << "Failed to compile line shader to SPIR-V\n";
+        return false;
+    }
+
+    VkShaderModuleCreateInfo shaderModuleCI{
+        .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .codeSize = spirv->getBufferSize(),
+        .pCode    = (uint32_t*)spirv->getBufferPointer()};
+    if (!Check(vkCreateShaderModule(device, &shaderModuleCI, nullptr, &lineShader)))
+    {
+        return false;
+    }
 
     return true;
 }
@@ -711,8 +780,19 @@ bool VulkanAdapter::InitVulkanSkyboxShader()
     slangGlobalSession->createSession(slangSessionDesc, slangSession.writeRef());
 
     Slang::ComPtr<slang::IModule> slangModule{slangSession->loadModuleFromSource("triangle", "resources/shader/skybox_shader.slang", nullptr, nullptr)};
-    Slang::ComPtr<ISlangBlob>     spirv;
+    if (!slangModule)
+    {
+        std::cerr << "Failed to load skybox_shader.slang\n";
+        return false;
+    }
+
+    Slang::ComPtr<ISlangBlob> spirv;
     slangModule->getTargetCode(0, spirv.writeRef());
+    if (!spirv)
+    {
+        std::cerr << "Failed to compile skybox shader to SPIR-V\n";
+        return false;
+    }
 
     VkShaderModuleCreateInfo shaderModuleCI{
         .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
@@ -909,6 +989,136 @@ bool VulkanAdapter::InitVulkanSkyboxDescriptorSetLayout()
     {
         return false;
     }
+    return true;
+}
+
+bool VulkanAdapter::InitVulkanLinePipeline()
+{
+    // pipeline layout: push constant only (FrameUniforms addr + optional index)
+    VkPushConstantRange pushConstantRange{
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+        .offset     = 0,
+        .size       = sizeof(PushConstant)};
+
+    VkPipelineLayoutCreateInfo pipelineLayoutCI{
+        .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount         = 0,
+        .pSetLayouts            = nullptr,
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges    = &pushConstantRange};
+
+    if (!Check(vkCreatePipelineLayout(device, &pipelineLayoutCI, nullptr, &linePipelineLayout)))
+    {
+        return false;
+    }
+
+    std::vector<VkPipelineShaderStageCreateInfo> shaderStagesCIs{
+        VkPipelineShaderStageCreateInfo{
+            .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage  = VK_SHADER_STAGE_VERTEX_BIT,
+            .module = lineShader,
+            .pName  = "main"},
+        VkPipelineShaderStageCreateInfo{
+            .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .module = lineShader,
+            .pName  = "main"}};
+
+    VkVertexInputBindingDescription vertexBinding{
+        .binding   = 0,
+        .stride    = sizeof(Line),
+        .inputRate = VK_VERTEX_INPUT_RATE_VERTEX};
+
+    std::vector<VkVertexInputAttributeDescription> vertexAttributes{
+        VkVertexInputAttributeDescription{
+            .location = 0,
+            .binding  = 0,
+            .format   = VK_FORMAT_R32G32B32_SFLOAT,
+            .offset   = offsetof(Line, pos)},
+        VkVertexInputAttributeDescription{
+            .location = 1,
+            .binding  = 0,
+            .format   = VK_FORMAT_R32G32B32A32_SFLOAT,
+            .offset   = offsetof(Line, color)}};
+
+    VkPipelineVertexInputStateCreateInfo vertexInputStageCI{
+        .sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+        .vertexBindingDescriptionCount   = 1,
+        .pVertexBindingDescriptions      = &vertexBinding,
+        .vertexAttributeDescriptionCount = (uint32_t)vertexAttributes.size(),
+        .pVertexAttributeDescriptions    = vertexAttributes.data()};
+
+    VkPipelineInputAssemblyStateCreateInfo inputAssemblyStateCI{
+        .sType    = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+        .topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST};
+
+    std::vector<VkDynamicState> dynamicStates{
+        VK_DYNAMIC_STATE_VIEWPORT,
+        VK_DYNAMIC_STATE_SCISSOR};
+    VkPipelineDynamicStateCreateInfo dynamicStateCI{
+        .sType             = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+        .dynamicStateCount = (uint32_t)dynamicStates.size(),
+        .pDynamicStates    = dynamicStates.data()};
+
+    VkPipelineViewportStateCreateInfo viewportStateCI{
+        .sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+        .viewportCount = 1,
+        .scissorCount  = 1};
+
+    VkPipelineRasterizationStateCreateInfo rasterizationStateCI{
+        .sType       = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+        .polygonMode = VK_POLYGON_MODE_FILL,
+        .cullMode    = VK_CULL_MODE_NONE,
+        .frontFace   = VK_FRONT_FACE_COUNTER_CLOCKWISE,
+        .lineWidth   = 1.0f};
+
+    VkPipelineMultisampleStateCreateInfo multisampleStateCI{
+        .sType                = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+        .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT};
+
+    VkPipelineDepthStencilStateCreateInfo depthStencilStateCI{
+        .sType            = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+        .depthTestEnable  = VK_TRUE,
+        .depthWriteEnable = VK_FALSE,
+        .depthCompareOp   = VK_COMPARE_OP_LESS_OR_EQUAL};
+
+    VkPipelineColorBlendAttachmentState blendAttachment{
+        .blendEnable    = VK_FALSE,
+        .colorWriteMask = 0xF};
+
+    VkPipelineColorBlendStateCreateInfo colorBlendStateCI{
+        .sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+        .attachmentCount = 1,
+        .pAttachments    = &blendAttachment};
+
+    const VkFormat                imageFormat = VK_FORMAT_B8G8R8A8_SRGB;
+    const VkFormat                depthFormat = VK_FORMAT_D24_UNORM_S8_UINT;
+    VkPipelineRenderingCreateInfo renderingCI{
+        .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+        .colorAttachmentCount    = 1,
+        .pColorAttachmentFormats = &imageFormat,
+        .depthAttachmentFormat   = depthFormat};
+
+    VkGraphicsPipelineCreateInfo graphicsPipelineCI{
+        .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+        .pNext               = &renderingCI,
+        .stageCount          = (uint32_t)shaderStagesCIs.size(),
+        .pStages             = shaderStagesCIs.data(),
+        .pVertexInputState   = &vertexInputStageCI,
+        .pInputAssemblyState = &inputAssemblyStateCI,
+        .pViewportState      = &viewportStateCI,
+        .pRasterizationState = &rasterizationStateCI,
+        .pMultisampleState   = &multisampleStateCI,
+        .pDepthStencilState  = &depthStencilStateCI,
+        .pColorBlendState    = &colorBlendStateCI,
+        .pDynamicState       = &dynamicStateCI,
+        .layout              = linePipelineLayout};
+
+    if (!Check(vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &graphicsPipelineCI, nullptr, &linePipeline)))
+    {
+        return false;
+    }
+
     return true;
 }
 
@@ -1719,6 +1929,87 @@ bool VulkanAdapter::LoadTexture(const Texture& tex, std::vector<TextureResource>
     }
 
     textures.emplace_back(std::move(texResource));
+    return true;
+}
+
+bool VulkanAdapter::GenerateAxisGridBuffer()
+{
+    std::vector<Line> v;
+
+    // axis
+    const float axisLen = 1000.0f;
+
+    // grid
+    const float gridSize = 2000.0f;
+    const float half     = gridSize * 0.5f; // 1000
+    const float step     = 10.0f;
+
+    const glm::vec4 colorX = glm::vec4(1, 0, 0, 1);
+    const glm::vec4 colorY = glm::vec4(0, 1, 0, 1);
+    const glm::vec4 colorZ = glm::vec4(0, 0, 1, 1);
+    const glm::vec4 colorG = glm::vec4(0.35f, 0.35f, 0.35f, 1.0f);
+
+    // grid lines
+    const int n = int(half / step);
+    v.reserve(6 + (size_t)(n * 2) * 4 + 4);
+    for (int i = -n; i <= n; ++i)
+    {
+        if (i == 0)
+        {
+            continue;
+        }
+
+        float p = i * step;
+
+        // x = p : z from -half..+half
+        v.push_back(Line{glm::vec3(p, 0.0f, -half), colorG});
+        v.push_back(Line{glm::vec3(p, 0.0f, +half), colorG});
+
+        // z = p : x from -half..+half
+        v.push_back(Line{glm::vec3(-half, 0.0f, p), colorG});
+        v.push_back(Line{glm::vec3(+half, 0.0f, p), colorG});
+    }
+
+    // negative-half of the two main axis lines
+    // x = 0, z in [-half, 0]
+    v.push_back(Line{glm::vec3(0.0f, 0.0f, -half), colorG});
+    v.push_back(Line{glm::vec3(0.0f, 0.0f, 0.0f), colorG});
+
+    // z = 0, x in [-half, 0]
+    v.push_back(Line{glm::vec3(-half, 0.0f, 0.0f), colorG});
+    v.push_back(Line{glm::vec3(0.0f, 0.0f, 0.0f), colorG});
+
+    // axes
+    v.push_back(Line{glm::vec3(0, 0, 0), colorX});
+    v.push_back(Line{glm::vec3(+axisLen, 0, 0), colorX});
+
+    v.push_back(Line{glm::vec3(0, 0, 0), colorY});
+    v.push_back(Line{glm::vec3(0, +axisLen, 0), colorY});
+
+    v.push_back(Line{glm::vec3(0, 0, 0), colorZ});
+    v.push_back(Line{glm::vec3(0, 0, +axisLen), colorZ});
+
+    // upload
+    VkDeviceSize       size = VkDeviceSize(v.size() * sizeof(Line));
+    VkBufferCreateInfo bufferCI{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size  = size,
+        .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT};
+    VmaAllocationCreateInfo allocCI{
+        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                 VMA_ALLOCATION_CREATE_MAPPED_BIT,
+        .usage = VMA_MEMORY_USAGE_AUTO};
+    if (!Check(vmaCreateBuffer(allocator, &bufferCI, &allocCI, &axisGridBuffer.buffer, &axisGridBuffer.allocation, nullptr)))
+    {
+        return false;
+    }
+
+    void* mapped = nullptr;
+    vmaMapMemory(allocator, axisGridBuffer.allocation, &mapped);
+    std::memcpy(mapped, v.data(), (size_t)size);
+    vmaUnmapMemory(allocator, axisGridBuffer.allocation);
+
+    axisGridBuffer.indexCount = (uint32_t)v.size(); // vertexCount
     return true;
 }
 

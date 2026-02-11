@@ -62,11 +62,10 @@ struct MappedGpuBuffer
 
 struct MeshGpuBuffer
 {
-    VkBuffer      buffer     = VK_NULL_HANDLE;
-    VmaAllocation allocation = VK_NULL_HANDLE;
-
-    VkDeviceSize offsetOfIndexBuffer = 0;
-    Index        indexCount          = 0;
+    VkBuffer      buffer              = VK_NULL_HANDLE;
+    VmaAllocation allocation          = VK_NULL_HANDLE;
+    VkDeviceSize  offsetOfIndexBuffer = 0;
+    Index         indexCount          = 0;
 };
 
 struct TextureResource
@@ -100,11 +99,13 @@ class VulkanAdapter
     bool InitVmaAllocator();
     bool InitVulkanSwapchain();
     bool InitVulkanMeshShader();
+    bool InitVulkanLineShader();
     bool InitVulkanSkyboxShader();
     bool InitVulkanSyncObjects();
     bool InitVulkanCommandPools();
     bool InitVulkanMeshDescriptorSetLayout();
     bool InitVulkanSkyboxDescriptorSetLayout();
+    bool InitVulkanLinePipeline();
     bool InitVulkanMeshPipeline();
     bool InitVulkanSkyboxPipeline();
 
@@ -116,6 +117,8 @@ class VulkanAdapter
     void LoadNode(const Node& node);
     bool LoadMesh(const Mesh& mesh, std::vector<MeshGpuBuffer>& buffers);
     bool LoadTexture(const Texture& tex, std::vector<TextureResource>& textures);
+
+    bool GenerateAxisGridBuffer();
 
     bool GenerateSkyboxBuffer();
     bool LoadSkybox(const std::string& path);
@@ -137,6 +140,8 @@ class VulkanAdapter
 
     std::vector<MeshGpuBuffer>   meshBuffers;
     std::vector<TextureResource> meshTextures;
+
+    MeshGpuBuffer axisGridBuffer;
 
     MeshGpuBuffer   skyboxBuffer;
     TextureResource skyboxTexture;
@@ -166,6 +171,7 @@ class VulkanAdapter
     VmaAllocation            depthImageAllocation = VK_NULL_HANDLE;
     VkImageView              depthImageView       = VK_NULL_HANDLE;
     FrameUniformsGpuBuffers  frameUniformGpuBuffers;
+    VkShaderModule           lineShader   = VK_NULL_HANDLE;
     VkShaderModule           meshShader   = VK_NULL_HANDLE;
     VkShaderModule           skyboxShader = VK_NULL_HANDLE;
     SlangGlobalSession       slangGlobalSession;
@@ -180,6 +186,8 @@ class VulkanAdapter
     VkDescriptorSetLayout    descriptorSetLayoutMat = VK_NULL_HANDLE;
     VkDescriptorPool         descriptorPoolMat      = VK_NULL_HANDLE;
     VkDescriptorSet          descriptorSetMat       = VK_NULL_HANDLE;
+    VkPipelineLayout         linePipelineLayout     = VK_NULL_HANDLE;
+    VkPipeline               linePipeline           = VK_NULL_HANDLE;
     VkPipelineLayout         meshPipelineLayout     = VK_NULL_HANDLE;
     VkPipeline               meshPipeline           = VK_NULL_HANDLE;
     VkDescriptorSetLayout    descriptorSetLayoutSky = VK_NULL_HANDLE;
