@@ -132,6 +132,11 @@ void VulkanAdapter::Uninitialize()
 
     vmaDestroyBuffer(allocator, skyboxBuffer.buffer, skyboxBuffer.allocation);
 
+    if (axisGridBuffer.buffer != VK_NULL_HANDLE)
+    {
+        vmaDestroyBuffer(allocator, axisGridBuffer.buffer, axisGridBuffer.allocation);
+    }
+
     for (const TextureResource& texture : meshTextures)
     {
         vkDestroyImageView(device, texture.view, nullptr);
