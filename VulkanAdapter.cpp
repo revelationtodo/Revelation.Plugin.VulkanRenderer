@@ -1637,7 +1637,6 @@ void VulkanAdapter::LoadNode(const Node& node)
 
     float distance = node.aabb.Length().z * 2.5f;
     camPosition    = navigation + glm::vec3(0, -distance, distance * 0.6f);
-    camQuaternion  = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 
     // swap & destroy old resources
     std::swap(meshBuffers, newMeshBuffers);
