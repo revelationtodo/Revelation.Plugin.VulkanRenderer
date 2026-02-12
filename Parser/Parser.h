@@ -104,7 +104,8 @@ class Parser
     bool        LoadTexture(const std::string& texPath, const aiScene* scene, Texture& tex) const;
 
     // -------- math / transform --------
-    glm::mat4      ToGlm(const aiMatrix4x4& m) const;
+    glm::mat4      GetGlmMatrix(const aiMatrix4x4& m) const;
+    glm::mat4      GetUpDirectionMatrix(const std::string& ext);
     void           ExpandAabb(AxisAlignedBox& aabb, const glm::vec3& p) const;
     void           MergeAabb(AxisAlignedBox& dst, const AxisAlignedBox& src) const;
     AxisAlignedBox TransformAabb(const AxisAlignedBox& local, const glm::mat4& M) const;

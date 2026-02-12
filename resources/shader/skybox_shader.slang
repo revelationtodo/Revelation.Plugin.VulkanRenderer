@@ -61,6 +61,8 @@ VSOutput main(VSInput input)
 [shader("fragment")]
 float4 main(VSOutput input) : SV_Target
 {
-    float3 dir = normalize(input.dir);
-    return gSkybox.Sample(dir);
+    float3 d_new = normalize(input.dir);
+    float3 d_old = float3(d_new.x, d_new.z, d_new.y);
+
+    return gSkybox.Sample(d_old);
 }

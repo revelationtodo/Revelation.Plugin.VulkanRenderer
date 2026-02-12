@@ -190,7 +190,7 @@ void VulkanAdapter::Tick(double elapsed)
     float         aspect     = (float)m_targetWindow->width() / m_targetWindow->height();
     frameUniforms.projection = glm::perspective(glm::radians(45.0f), aspect, 0.01f, 100000.0f);
     frameUniforms.projection[1][1] *= -1;
-    frameUniforms.view      = glm::lookAt(camPosition, navigation, glm::vec3(0, 1, 0));
+    frameUniforms.view      = glm::lookAt(camPosition, navigation, glm::vec3(0.0f, 0.0f, 1.0f));
     frameUniforms.cameraPos = glm::vec4(camPosition, 1.0f);
     memcpy(frameUniformGpuBuffers[frameIndex].mapped, &frameUniforms, sizeof(FrameUniforms));
 
@@ -1392,21 +1392,24 @@ void VulkanAdapter::PollInputEvents(double elapsed)
                     }
 
                     float sensitivity = 0.005f;
-                    camRotation.y -= data.deltaX * sensitivity;
-                    camRotation.x += data.deltaY * sensitivity;
+
+                    glm::vec3 dir = glm::normalize(offset);
+
+                    float currentElevation = std::asinf(dir.z);
+                    float currentAzimuth   = std::atan2f(dir.x, -dir.y);
+
+                    float newAzimuth   = currentAzimuth - data.deltaX * sensitivity;
+                    float newElevation = currentElevation + data.deltaY * sensitivity;
 
                     constexpr float limit = glm::half_pi<float>() - 0.001f;
-                    camRotation.x         = std::clamp(camRotation.x, -limit, +limit);
+                    newElevation          = std::clamp(newElevation, -limit, limit);
 
-                    float pitch = camRotation.x;
-                    float yaw   = camRotation.y;
+                    glm::vec3 newDir;
+                    newDir.x = std::cosf(newElevation) * std::sinf(newAzimuth);
+                    newDir.y = -std::cosf(newElevation) * std::cosf(newAzimuth);
+                    newDir.z = std::sinf(newElevation);
 
-                    glm::vec3 dir;
-                    dir.x = std::cosf(pitch) * std::sinf(yaw);
-                    dir.y = std::sinf(pitch);
-                    dir.z = std::cosf(pitch) * std::cosf(yaw);
-
-                    camPosition = navigation + dir * radius;
+                    camPosition = navigation + newDir * radius;
                 }
                 else if (data.rightBtnPressing)
                 {
@@ -1417,25 +1420,16 @@ void VulkanAdapter::PollInputEvents(double elapsed)
                         radius = 1.0f;
                     }
 
-                    float pitch = camRotation.x;
-                    float yaw   = camRotation.y;
+                    glm::vec3 forward = glm::normalize(navigation - camPosition);
+                    glm::vec3 worldUp = glm::vec3(0.0f, 0.0f, 1.0f); // Z-up
+                    glm::vec3 right   = glm::normalize(glm::cross(forward, worldUp));
+                    glm::vec3 up      = glm::normalize(glm::cross(right, forward));
 
-                    glm::vec3 dir;
-                    dir.x = std::cosf(pitch) * std::sinf(yaw);
-                    dir.y = std::sinf(pitch);
-                    dir.z = std::cosf(pitch) * std::cosf(yaw);
-                    dir   = glm::normalize(dir);
+                    const float k     = 0.0015f;
+                    float       scale = radius * k;
 
-                    glm::vec3 forward = -dir;
-                    glm::vec3 worldUp = glm::vec3(0, 1, 0);
-
-                    glm::vec3   right  = glm::normalize(glm::cross(forward, worldUp));
-                    glm::vec3   up     = glm::normalize(glm::cross(right, forward));
-                    const float k      = 0.1f;
-                    float       length = radius * k;
-
-                    float dx = data.deltaX * elapsed * length;
-                    float dy = data.deltaY * elapsed * length;
+                    float dx = data.deltaX * scale;
+                    float dy = data.deltaY * scale;
 
                     glm::vec3 pan = (-right * dx) + (up * dy);
 
@@ -1445,16 +1439,19 @@ void VulkanAdapter::PollInputEvents(double elapsed)
             }
             else if (data.event == MouseEventType::Wheel)
             {
-                glm::vec3   gazeDir = camPosition - navigation;
-                glm::vec3   dir     = glm::normalize(gazeDir);
-                float       dist    = glm::length(gazeDir);
+                glm::vec3 toCamera = camPosition - navigation;
+                float     dist     = glm::length(toCamera);
+
                 const float minDist = 0.02f;
                 const float maxDist = 1e6f;
                 float       steps   = data.deltaY / 120.0f;
                 const float k       = 0.15f;
-                float       newDist = dist * std::pow(1.0f - k, steps);
-                newDist             = std::clamp(newDist, minDist, maxDist);
-                camPosition         = navigation + dir * newDist;
+
+                float newDist = dist * std::pow(1.0f - k, steps);
+                newDist       = std::clamp(newDist, minDist, maxDist);
+
+                glm::vec3 dir = glm::normalize(toCamera);
+                camPosition   = navigation + dir * newDist;
             }
         }
     }
@@ -1636,9 +1633,11 @@ void VulkanAdapter::LoadNode(const Node& node)
         meshUniformsVec.emplace_back(std::move(meshUniforms));
     }
 
-    navigation  = node.aabb.Center();
-    camPosition = navigation + glm::vec3(0, 0, node.aabb.Length().z * 2.5f);
-    camRotation = glm::quat(1, 0, 0, 0);
+    navigation = node.aabb.Center();
+
+    float distance = node.aabb.Length().z * 2.5f;
+    camPosition    = navigation + glm::vec3(0, -distance, distance * 0.6f);
+    camRotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 
     // swap & destroy old resources
     std::swap(meshBuffers, newMeshBuffers);
@@ -1936,20 +1935,16 @@ bool VulkanAdapter::GenerateAxisGridBuffer()
 {
     std::vector<Line> v;
 
-    // axis
-    const float axisLen = 1000.0f;
-
-    // grid
+    const float axisLen  = 1000.0f;
     const float gridSize = 2000.0f;
-    const float half     = gridSize * 0.5f; // 1000
+    const float half     = gridSize * 0.5f;
     const float step     = 10.0f;
 
-    const glm::vec4 colorX = glm::vec4(1, 0, 0, 1);
-    const glm::vec4 colorY = glm::vec4(0, 1, 0, 1);
-    const glm::vec4 colorZ = glm::vec4(0, 0, 1, 1);
+    const glm::vec4 colorX = glm::vec4(1, 0, 0, 1); // X(right)
+    const glm::vec4 colorY = glm::vec4(0, 1, 0, 1); // Y(forward)
+    const glm::vec4 colorZ = glm::vec4(0, 0, 1, 1); // Z(up)
     const glm::vec4 colorG = glm::vec4(0.35f, 0.35f, 0.35f, 1.0f);
 
-    // grid lines
     const int n = int(half / step);
     v.reserve(6 + (size_t)(n * 2) * 4 + 4);
     for (int i = -n; i <= n; ++i)
@@ -1961,25 +1956,23 @@ bool VulkanAdapter::GenerateAxisGridBuffer()
 
         float p = i * step;
 
-        // x = p : z from -half..+half
-        v.push_back(Line{glm::vec3(p, 0.0f, -half), colorG});
-        v.push_back(Line{glm::vec3(p, 0.0f, +half), colorG});
+        // y direction grid line
+        v.push_back(Line{glm::vec3(p, -half, 0), colorG});
+        v.push_back(Line{glm::vec3(p, +half, 0), colorG});
 
-        // z = p : x from -half..+half
-        v.push_back(Line{glm::vec3(-half, 0.0f, p), colorG});
-        v.push_back(Line{glm::vec3(+half, 0.0f, p), colorG});
+        // x direction grid line
+        v.push_back(Line{glm::vec3(-half, p, 0), colorG});
+        v.push_back(Line{glm::vec3(+half, p, 0), colorG});
     }
 
-    // negative-half of the two main axis lines
-    // x = 0, z in [-half, 0]
-    v.push_back(Line{glm::vec3(0.0f, 0.0f, -half), colorG});
-    v.push_back(Line{glm::vec3(0.0f, 0.0f, 0.0f), colorG});
+    // negative axis
+    v.push_back(Line{glm::vec3(0, -half, 0), colorG});
+    v.push_back(Line{glm::vec3(0, 0, 0), colorG});
 
-    // z = 0, x in [-half, 0]
-    v.push_back(Line{glm::vec3(-half, 0.0f, 0.0f), colorG});
-    v.push_back(Line{glm::vec3(0.0f, 0.0f, 0.0f), colorG});
+    v.push_back(Line{glm::vec3(-half, 0, 0), colorG});
+    v.push_back(Line{glm::vec3(0, 0, 0), colorG});
 
-    // axes
+    // positive axis
     v.push_back(Line{glm::vec3(0, 0, 0), colorX});
     v.push_back(Line{glm::vec3(+axisLen, 0, 0), colorX});
 
@@ -1989,7 +1982,6 @@ bool VulkanAdapter::GenerateAxisGridBuffer()
     v.push_back(Line{glm::vec3(0, 0, 0), colorZ});
     v.push_back(Line{glm::vec3(0, 0, +axisLen), colorZ});
 
-    // upload
     VkDeviceSize       size = VkDeviceSize(v.size() * sizeof(Line));
     VkBufferCreateInfo bufferCI{
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -2009,21 +2001,21 @@ bool VulkanAdapter::GenerateAxisGridBuffer()
     std::memcpy(mapped, v.data(), (size_t)size);
     vmaUnmapMemory(allocator, axisGridBuffer.allocation);
 
-    axisGridBuffer.indexCount = (uint32_t)v.size(); // vertexCount
+    axisGridBuffer.indexCount = (uint32_t)v.size();
     return true;
 }
 
 bool VulkanAdapter::GenerateSkyboxBuffer()
 {
     std::array<Vertex, 8> vertices{};
-    vertices[0].pos = glm::vec3(-1, -1, -1);
-    vertices[1].pos = glm::vec3(+1, -1, -1);
-    vertices[2].pos = glm::vec3(+1, +1, -1);
-    vertices[3].pos = glm::vec3(-1, +1, -1);
-    vertices[4].pos = glm::vec3(-1, -1, +1);
-    vertices[5].pos = glm::vec3(+1, -1, +1);
-    vertices[6].pos = glm::vec3(+1, +1, +1);
-    vertices[7].pos = glm::vec3(-1, +1, +1);
+    vertices[0].pos = glm::vec3(-1.0f, -1.0f, -1.0f);
+    vertices[1].pos = glm::vec3(+1.0f, -1.0f, -1.0f);
+    vertices[2].pos = glm::vec3(+1.0f, +1.0f, -1.0f);
+    vertices[3].pos = glm::vec3(-1.0f, +1.0f, -1.0f);
+    vertices[4].pos = glm::vec3(-1.0f, -1.0f, +1.0f);
+    vertices[5].pos = glm::vec3(+1.0f, -1.0f, +1.0f);
+    vertices[6].pos = glm::vec3(+1.0f, +1.0f, +1.0f);
+    vertices[7].pos = glm::vec3(-1.0f, +1.0f, +1.0f);
 
     std::array<Index, 36> indices = {
         // -Z (back)

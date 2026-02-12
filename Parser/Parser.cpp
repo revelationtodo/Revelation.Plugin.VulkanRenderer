@@ -28,8 +28,10 @@ bool Parser::Parse(const std::string& file, Node& node)
         return false;
     }
 
-    std::string assetDir = std::filesystem::path(file).parent_path().string();
-    ProcessNodeRecursive(scene, scene->mRootNode, assetDir, glm::mat4(1.0f), node);
+    std::filesystem::path filePath = std::filesystem::path(file);
+    std::string           assetDir = filePath.parent_path().string();
+    glm::mat4             upMat    = GetUpDirectionMatrix(filePath.extension().string());
+    ProcessNodeRecursive(scene, scene->mRootNode, assetDir, upMat, node);
     return true;
 }
 
@@ -41,7 +43,7 @@ void Parser::ProcessNodeRecursive(const aiScene* scene, const aiNode* ain, const
 {
     outNode = Node();
 
-    glm::mat4 local  = ToGlm(ain->mTransformation);
+    glm::mat4 local  = GetGlmMatrix(ain->mTransformation);
     glm::mat4 global = parentGlobal * local;
     outNode.trans    = local;
 
@@ -368,7 +370,7 @@ bool Parser::LoadTexture(const std::string& texPath, const aiScene* scene, Textu
 // ------------------------------------------------------------
 // math helpers
 // ------------------------------------------------------------
-glm::mat4 Parser::ToGlm(const aiMatrix4x4& m) const
+glm::mat4 Parser::GetGlmMatrix(const aiMatrix4x4& m) const
 {
     glm::mat4 r;
     r[0][0] = m.a1;
@@ -388,6 +390,17 @@ glm::mat4 Parser::ToGlm(const aiMatrix4x4& m) const
     r[2][3] = m.d3;
     r[3][3] = m.d4;
     return r;
+}
+
+glm::mat4 Parser::GetUpDirectionMatrix(const std::string& ext)
+{
+    glm::mat4 mat = glm::mat4(1.0f);
+    if (ext == ".gltf" || ext == ".glb")
+    {
+        mat = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1, 0, 0));
+    }
+
+    return mat;
 }
 
 void Parser::ExpandAabb(AxisAlignedBox& aabb, const glm::vec3& p) const

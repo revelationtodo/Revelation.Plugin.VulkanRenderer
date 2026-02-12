@@ -48,9 +48,8 @@ struct VSOutput
     float3 tangentWS  : TEXCOORD3; // NEW
     float  tangentW   : TEXCOORD4; // NEW (handedness)
 
-    float3 lightVecWS : TEXCOORD5;
-    float4 color      : TEXCOORD6;
-    int    meshIndex  : TEXCOORD7;
+    float4 color      : TEXCOORD5;
+    int    meshIndex  : TEXCOORD6;
 };
 
 [[vk::binding(0, 0)]]
@@ -92,7 +91,6 @@ VSOutput main(VSInput input, uint instanceIndex : SV_VulkanInstanceID)
     o.positionCS = mul(P, mul(V, posWS4));
 
     float3 lightDirWS = safeNormalize(frame->lightDirWS.xyz);
-    o.lightVecWS = -lightDirWS;
 
     float3x3 normalMat = (float3x3)M;
 
@@ -163,7 +161,7 @@ float4 main(VSOutput input) : SV_Target
     // -------------------------
     FrameUniforms* frame = (FrameUniforms*)gPC.frameUniformsAddr;
     float3 V = safeNormalize(frame->cameraPosWS.xyz - input.posWS);
-    float3 L = safeNormalize(input.lightVecWS);
+    float3 L = safeNormalize(frame->lightDirWS.xyz);
 
     float ndotl = max(dot(N, L), 0.0);
 
