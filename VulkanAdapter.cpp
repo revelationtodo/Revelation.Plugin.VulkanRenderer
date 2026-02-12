@@ -188,7 +188,7 @@ void VulkanAdapter::Tick(double elapsed)
     // update shader data
     FrameUniforms frameUniforms;
     float         aspect     = (float)m_targetWindow->width() / m_targetWindow->height();
-    frameUniforms.projection = glm::perspective(glm::radians(45.0f), aspect, 0.01f, 100000.0f);
+    frameUniforms.projection = glm::perspective(glm::radians(45.0f), aspect, zNear, zFar);
     frameUniforms.projection[1][1] *= -1;
     frameUniforms.view      = glm::lookAt(camPosition, navigation, glm::vec3(0.0f, 0.0f, 1.0f));
     frameUniforms.cameraPos = glm::vec4(camPosition, 1.0f);
@@ -1439,20 +1439,19 @@ void VulkanAdapter::PollInputEvents(double elapsed)
             }
             else if (data.event == MouseEventType::Wheel)
             {
-                glm::vec3 toCamera = camPosition - navigation;
-                float     dist     = glm::length(toCamera);
-
-                const float minDist = 0.02f;
-                const float maxDist = 1e6f;
-                float       steps   = data.deltaY / 120.0f;
-                const float k       = 0.15f;
-
-                float newDist = dist * std::pow(1.0f - k, steps);
-                newDist       = std::clamp(newDist, minDist, maxDist);
-
-                glm::vec3 dir = glm::normalize(toCamera);
-                camPosition   = navigation + dir * newDist;
+                glm::vec3   toCamera = camPosition - navigation;
+                float       dist     = glm::length(toCamera);
+                const float minDist  = 0.02f;
+                const float maxDist  = 1e6f;
+                float       steps    = data.deltaY / 120.0f;
+                const float k        = 0.15f;
+                float       diff     = dist * std::pow(1.0f - k, steps);
+                diff                 = std::clamp(diff, minDist, maxDist);
+                glm::vec3 dir        = glm::normalize(toCamera);
+                camPosition          = navigation + dir * diff;
             }
+
+            UpdateZnZf();
         }
     }
 }
@@ -1554,6 +1553,18 @@ bool VulkanAdapter::UpdateSwapchain()
     return true;
 }
 
+void VulkanAdapter::UpdateZnZf()
+{
+    float dist = glm::length(camPosition - navigation);
+    dist       = std::max(dist, 0.02f);
+    float zn   = dist * 0.01f;
+    float zf   = dist * 100.0f;
+    zn         = std::clamp(zn, 0.01f, 10.0f);
+    zf         = std::clamp(zf, 1000.0f, 100000.0f);
+    zNear      = zn;
+    zFar       = zf;
+}
+
 void VulkanAdapter::CollectMeshes(const Node& node, std::vector<const Mesh*>& out)
 {
     for (const Mesh& mesh : node.meshes)
@@ -1637,6 +1648,7 @@ void VulkanAdapter::LoadNode(const Node& node)
 
     float distance = node.aabb.Length().z * 2.5f;
     camPosition    = navigation + glm::vec3(0, -distance, distance * 0.6f);
+    UpdateZnZf();
 
     // swap & destroy old resources
     std::swap(meshBuffers, newMeshBuffers);

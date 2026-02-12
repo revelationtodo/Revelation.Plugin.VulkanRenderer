@@ -112,6 +112,7 @@ class VulkanAdapter
     void PollInputEvents(double elapsed);
 
     bool UpdateSwapchain();
+    void UpdateZnZf();
 
     void CollectMeshes(const Node& node, std::vector<const Mesh*>& out);
     void LoadNode(const Node& node);
@@ -148,8 +149,10 @@ class VulkanAdapter
 
     MappedGpuBuffer meshUniformsGpuBuffer;
 
-    glm::vec3 navigation    = glm::vec3(0.0f);
-    glm::vec3 camPosition   = glm::vec3(0.0f, -10.0f, 10.0f);
+    glm::vec3 navigation  = glm::vec3(0.0f);
+    glm::vec3 camPosition = glm::vec3(0.0f, -10.0f, 10.0f);
+    float     zNear       = 1.0f;
+    float     zFar        = 10000.0f;
 
     uint32_t   imageIndex = 0;
     uint32_t   frameIndex = 0;
