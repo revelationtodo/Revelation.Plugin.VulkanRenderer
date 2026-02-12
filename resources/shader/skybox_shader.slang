@@ -58,11 +58,31 @@ VSOutput main(VSInput input)
     return o;
 }
 
+float3 ToneMap_ACES(float3 x)
+{
+    // Narkowicz 2015 (ACES fitted)
+    const float a = 2.51;
+    const float b = 0.03;
+    const float c = 2.43;
+    const float d = 0.59;
+    const float e = 0.14;
+    return saturate((x * (a * x + b)) / (x * (c * x + d) + e));
+}
+
 [shader("fragment")]
 float4 main(VSOutput input) : SV_Target
 {
     float3 d_new = normalize(input.dir);
     float3 d_old = float3(d_new.x, d_new.z, d_new.y);
 
-    return gSkybox.Sample(d_old);
+    // HDR sample (linear, can be > 1)
+    float3 hdr = gSkybox.Sample(d_old).rgb;
+
+    float exposure = 0.1;
+    hdr *= exposure;
+
+    float3 ldr = ToneMap_ACES(hdr);
+    ldr = pow(ldr, 1.0 / 2.2);
+
+    return float4(ldr, 1.0);
 }
