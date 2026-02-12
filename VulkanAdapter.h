@@ -148,9 +148,9 @@ class VulkanAdapter
 
     MappedGpuBuffer meshUniformsGpuBuffer;
 
-    glm::vec3 navigation  = glm::vec3(0.0f);
-    glm::vec3 camPosition = glm::vec3(0.0f, -10.0f, 10.0f);
-    glm::quat camRotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+    glm::vec3 navigation    = glm::vec3(0.0f);
+    glm::vec3 camPosition   = glm::vec3(0.0f, -10.0f, 10.0f);
+    glm::quat camQuaternion = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 
     uint32_t   imageIndex = 0;
     uint32_t   frameIndex = 0;
