@@ -95,6 +95,8 @@ void VulkanAdapter::Initialize()
 
 void VulkanAdapter::Uninitialize()
 {
+    m_loadFuture.wait();
+
     vkDeviceWaitIdle(device);
 
     //////////////////////////////////////////////////////////////////////////
@@ -207,6 +209,11 @@ void VulkanAdapter::Uninitialize()
 bool VulkanAdapter::IsReady()
 {
     return m_ready;
+}
+
+bool VulkanAdapter::Loading()
+{
+    return !m_loadFuture.valid();
 }
 
 void VulkanAdapter::Tick(double elapsed)
@@ -1655,14 +1662,14 @@ void VulkanAdapter::PollInputEvents(double elapsed)
         else if (event.type == EventType::DropEvent)
         {
             DropEventData data = std::any_cast<DropEventData>(event.data);
-            std::thread   loadThread([this, data]() {
+            
+            m_loadFuture = std::async(std::launch::async, [this, data]() {
                 Node node;
                 if (m_parser.Parse(data.file, node))
                 {
                     LoadNode(node);
                 }
             });
-            loadThread.detach();
         }
         else if (event.type == EventType::MouseEvent)
         {
@@ -1887,9 +1894,14 @@ void VulkanAdapter::LoadPoints(const Node& node)
         }
 
         PointsUniforms u;
-        u.model        = pts->trans;
+        u.model = pts->trans;
 
         pointsUniformsVec.emplace_back(std::move(u));
+    }
+
+    if (pointsUniformsVec.empty())
+    {
+        return;
     }
 
     // swap & destroy old point buffers
@@ -1901,7 +1913,6 @@ void VulkanAdapter::LoadPoints(const Node& node)
 
     // update points ssbo
     VkDeviceSize pointsUniformSize = VkDeviceSize(pointsUniformsVec.size()) * sizeof(PointsUniforms);
-
     if (nullptr != pointsUniformsGpuBuffer.mapped)
     {
         vmaUnmapMemory(allocator, pointsUniformsGpuBuffer.allocation);
@@ -2062,6 +2073,11 @@ void VulkanAdapter::LoadMeshes(const Node& node)
         meshUniformsVec.emplace_back(std::move(meshUniforms));
     }
 
+    if (meshUniformsVec.empty())
+    {
+        return;
+    }
+
     // swap & destroy old resources
     std::swap(meshBuffers, newMeshBuffers);
     for (const MeshGpuBuffer& bufferDesc : newMeshBuffers)
@@ -2100,39 +2116,44 @@ void VulkanAdapter::LoadMeshes(const Node& node)
     if (VK_NULL_HANDLE != meshUniformsGpuBuffer.buffer)
     {
         vmaDestroyBuffer(allocator, meshUniformsGpuBuffer.buffer, meshUniformsGpuBuffer.allocation);
+        meshUniformsGpuBuffer.buffer     = VK_NULL_HANDLE;
+        meshUniformsGpuBuffer.allocation = VK_NULL_HANDLE;
     }
 
-    VkBufferCreateInfo bufferCI{
-        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size  = meshUniformSize,
-        .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT};
-    VmaAllocationCreateInfo bufferAllocCI{
-        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-                 VMA_ALLOCATION_CREATE_MAPPED_BIT,
-        .usage = VMA_MEMORY_USAGE_AUTO};
-    VmaAllocationInfo bufferAI{};
-    if (!Check(vmaCreateBuffer(allocator, &bufferCI, &bufferAllocCI, &meshUniformsGpuBuffer.buffer, &meshUniformsGpuBuffer.allocation, &bufferAI)))
+    if (meshUniformSize > 0)
     {
-        return;
-    }
-    vmaMapMemory(allocator, meshUniformsGpuBuffer.allocation, &meshUniformsGpuBuffer.mapped);
-    std::memcpy(meshUniformsGpuBuffer.mapped, meshUniformsVec.data(), meshUniformSize);
-    vmaFlushAllocation(allocator, meshUniformsGpuBuffer.allocation, 0, meshUniformSize);
+        VkBufferCreateInfo bufferCI{
+            .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .size  = meshUniformSize,
+            .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT};
+        VmaAllocationCreateInfo bufferAllocCI{
+            .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                     VMA_ALLOCATION_CREATE_MAPPED_BIT,
+            .usage = VMA_MEMORY_USAGE_AUTO};
+        VmaAllocationInfo bufferAI{};
+        if (!Check(vmaCreateBuffer(allocator, &bufferCI, &bufferAllocCI, &meshUniformsGpuBuffer.buffer, &meshUniformsGpuBuffer.allocation, &bufferAI)))
+        {
+            return;
+        }
+        vmaMapMemory(allocator, meshUniformsGpuBuffer.allocation, &meshUniformsGpuBuffer.mapped);
+        std::memcpy(meshUniformsGpuBuffer.mapped, meshUniformsVec.data(), meshUniformSize);
+        vmaFlushAllocation(allocator, meshUniformsGpuBuffer.allocation, 0, meshUniformSize);
 
-    VkDescriptorBufferInfo descBI{
-        .buffer = meshUniformsGpuBuffer.buffer,
-        .offset = 0,
-        .range  = meshUniformSize,
-    };
-    VkWriteDescriptorSet writeDescSetMat{
-        .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstSet          = descriptorSetMat,
-        .dstBinding      = 0,
-        .descriptorCount = 1,
-        .descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-        .pBufferInfo     = &descBI,
-    };
-    vkUpdateDescriptorSets(device, 1, &writeDescSetMat, 0, nullptr);
+        VkDescriptorBufferInfo descBI{
+            .buffer = meshUniformsGpuBuffer.buffer,
+            .offset = 0,
+            .range  = meshUniformSize,
+        };
+        VkWriteDescriptorSet writeDescSetMat{
+            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet          = descriptorSetMat,
+            .dstBinding      = 0,
+            .descriptorCount = 1,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .pBufferInfo     = &descBI,
+        };
+        vkUpdateDescriptorSets(device, 1, &writeDescSetMat, 0, nullptr);
+    }
 }
 
 void VulkanAdapter::CollectMeshes(const Node& node, std::vector<const Mesh*>& out)

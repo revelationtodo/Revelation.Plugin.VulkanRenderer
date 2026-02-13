@@ -26,6 +26,8 @@ class VulkanRendererWidget : public QWindow
 
     std::optional<Event> PollEvent();
 
+    bool CanDrop();
+
   protected:
     void showEvent(QShowEvent* event) override;
 

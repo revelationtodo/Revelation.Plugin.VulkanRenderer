@@ -9,6 +9,7 @@
 #include <vector>
 #include <iostream>
 #include <mutex>
+#include <future>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -33,7 +34,7 @@ struct alignas(16) FrameUniforms
 
 struct alignas(16) PointsUniforms
 {
-    glm::mat4 model        = glm::mat4(1.0f);
+    glm::mat4 model = glm::mat4(1.0f);
 };
 
 struct alignas(16) MeshUniforms
@@ -96,6 +97,7 @@ class VulkanAdapter
     void Uninitialize();
 
     bool IsReady();
+    bool Loading();
     void Tick(double elapsed);
 
   private:
@@ -148,6 +150,8 @@ class VulkanAdapter
 
     Parser m_parser;
     bool   m_ready = false;
+
+    std::future<void> m_loadFuture;
 
     //////////////////////////////////////////////////////////////////////////
     // Vulkan related

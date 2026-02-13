@@ -55,6 +55,11 @@ std::optional<Event> VulkanRendererWidget::PollEvent()
     return dynamic_cast<VulkanRendererWidgetWrapper*>(m_wrapper)->PollEvent();
 }
 
+bool VulkanRendererWidget::CanDrop()
+{
+    return !m_adapter->Loading();
+}
+
 void VulkanRendererWidget::showEvent(QShowEvent* event)
 {
     if (!m_frameTimer.isActive())
@@ -160,6 +165,12 @@ void VulkanRendererWidgetWrapper::resizeEvent(QResizeEvent* event)
 
 void VulkanRendererWidgetWrapper::dragEnterEvent(QDragEnterEvent* event)
 {
+    if (!m_rendererWidget->CanDrop())
+    {
+        event->ignore();
+        return;
+    }
+
     const QMimeData* mime = event->mimeData();
     if (nullptr != mime && mime->hasUrls())
     {
@@ -171,6 +182,12 @@ void VulkanRendererWidgetWrapper::dragEnterEvent(QDragEnterEvent* event)
 
 void VulkanRendererWidgetWrapper::dragMoveEvent(QDragMoveEvent* event)
 {
+    if (!m_rendererWidget->CanDrop())
+    {
+        event->ignore();
+        return;
+    }
+
     const QMimeData* mime = event->mimeData();
     if (nullptr != mime && mime->hasUrls())
     {
@@ -182,6 +199,12 @@ void VulkanRendererWidgetWrapper::dragMoveEvent(QDragMoveEvent* event)
 
 void VulkanRendererWidgetWrapper::dropEvent(QDropEvent* event)
 {
+    if (!m_rendererWidget->CanDrop())
+    {
+        event->ignore();
+        return;
+    }
+
     const QMimeData* mime = event->mimeData();
     if (nullptr == mime || !mime->hasUrls())
     {
