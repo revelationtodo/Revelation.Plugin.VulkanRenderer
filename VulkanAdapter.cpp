@@ -282,8 +282,7 @@ void VulkanAdapter::Tick(double elapsed)
             .oldLayout     = VK_IMAGE_LAYOUT_UNDEFINED,
             .newLayout     = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
             .image         = depthImage,
-            .subresourceRange{.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT |
-                                            VK_IMAGE_ASPECT_STENCIL_BIT,
+            .subresourceRange{.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
                               .levelCount = 1,
                               .layerCount = 1}}};
     VkDependencyInfo barrierDependencyInfo{
@@ -341,6 +340,26 @@ void VulkanAdapter::Tick(double elapsed)
     }
     // --- draw skybox end ---
 
+    // --- draw mesh begin ---
+    if (meshPipeline != VK_NULL_HANDLE && descriptorSetTex != VK_NULL_HANDLE && !meshBuffers.empty())
+    {
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline);
+        std::array<VkDescriptorSet, 2> descSets{descriptorSetTex, descriptorSetMat};
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipelineLayout, 0, (uint32_t)descSets.size(), descSets.data(), 0, nullptr);
+        for (int i = 0; i < meshBuffers.size(); ++i)
+        {
+            pushConstant.meshUniformsIndex = i;
+
+            const MeshGpuBuffer& meshBuffer = meshBuffers[i];
+            VkDeviceSize         vOffset    = 0;
+            vkCmdBindVertexBuffers(commandBuffer, 0, 1, &meshBuffer.buffer, &vOffset);
+            vkCmdBindIndexBuffer(commandBuffer, meshBuffer.buffer, meshBuffer.offsetOfIndexBuffer, VK_INDEX_TYPE_UINT32);
+            vkCmdPushConstants(commandBuffer, meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstant), &pushConstant);
+            vkCmdDrawIndexed(commandBuffer, meshBuffer.indexCount, 1, 0, 0, 0);
+        }
+    }
+    // --- draw mesh end ---
+
     // --- draw axis and grid begin ---
     if (linePipeline != VK_NULL_HANDLE && axisGridBuffer.buffer != VK_NULL_HANDLE && axisGridBuffer.indexCount > 0)
     {
@@ -369,26 +388,6 @@ void VulkanAdapter::Tick(double elapsed)
         pushConstant.pointsUniformsIndex = -1;
     }
     // --- draw points end ---
-
-    // --- draw mesh begin ---
-    if (meshPipeline != VK_NULL_HANDLE && descriptorSetTex != VK_NULL_HANDLE && !meshBuffers.empty())
-    {
-        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline);
-        std::array<VkDescriptorSet, 2> descSets{descriptorSetTex, descriptorSetMat};
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipelineLayout, 0, (uint32_t)descSets.size(), descSets.data(), 0, nullptr);
-        for (int i = 0; i < meshBuffers.size(); ++i)
-        {
-            pushConstant.meshUniformsIndex = i;
-
-            const MeshGpuBuffer& meshBuffer = meshBuffers[i];
-            VkDeviceSize         vOffset    = 0;
-            vkCmdBindVertexBuffers(commandBuffer, 0, 1, &meshBuffer.buffer, &vOffset);
-            vkCmdBindIndexBuffer(commandBuffer, meshBuffer.buffer, meshBuffer.offsetOfIndexBuffer, VK_INDEX_TYPE_UINT32);
-            vkCmdPushConstants(commandBuffer, meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstant), &pushConstant);
-            vkCmdDrawIndexed(commandBuffer, meshBuffer.indexCount, 1, 0, 0, 0);
-        }
-    }
-    // --- draw mesh end ---
 
     vkCmdEndRendering(commandBuffer);
 
