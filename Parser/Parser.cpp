@@ -21,7 +21,8 @@ bool Parser::Parse(const std::string& file, Node& node)
     Assimp::Importer importer;
     const aiScene*   scene = importer.ReadFile(file, aiProcess_Triangulate | aiProcess_JoinIdenticalVertices |
                                                          aiProcess_GenSmoothNormals | aiProcess_CalcTangentSpace |
-                                                         aiProcess_OptimizeMeshes | aiProcess_OptimizeGraph);
+                                                         aiProcess_OptimizeMeshes | aiProcess_OptimizeGraph |
+                                                         aiProcess_SortByPType);
 
     if (!scene || !scene->mRootNode)
     {
@@ -32,168 +33,6 @@ bool Parser::Parse(const std::string& file, Node& node)
     std::string           assetDir = filePath.parent_path().string();
     glm::mat4             upMat    = GetUpDirectionMatrix(filePath.extension().string());
     ProcessNodeRecursive(scene, scene->mRootNode, assetDir, upMat, node);
-    return true;
-}
-
-// ------------------------------------------------------------
-// node / mesh parsing
-// ------------------------------------------------------------
-void Parser::ProcessNodeRecursive(const aiScene* scene, const aiNode* ain, const std::string& assetDir,
-                                  const glm::mat4& parentGlobal, Node& outNode) const
-{
-    outNode = Node();
-
-    glm::mat4 local  = GetGlmMatrix(ain->mTransformation);
-    glm::mat4 global = parentGlobal * local;
-    outNode.trans    = local;
-
-    for (unsigned i = 0; i < ain->mNumMeshes; ++i)
-    {
-        Mesh           m;
-        AxisAlignedBox waabb;
-        ParseOneMesh(scene, scene->mMeshes[ain->mMeshes[i]], assetDir, global, m, waabb);
-        MergeAabb(outNode.aabb, waabb);
-        outNode.meshes.push_back(std::move(m));
-    }
-
-    for (unsigned i = 0; i < ain->mNumChildren; ++i)
-    {
-        Node child;
-        ProcessNodeRecursive(scene, ain->mChildren[i], assetDir, global, child);
-        MergeAabb(outNode.aabb, child.aabb);
-        outNode.children.push_back(std::move(child));
-    }
-}
-
-bool Parser::ParseOneMesh(const aiScene* scene, const aiMesh* aimesh, const std::string& assetDir,
-                          const glm::mat4& meshGlobalTrans, Mesh& outMesh, AxisAlignedBox& outMeshWorldAabb) const
-{
-    Mesh mesh;
-    mesh.trans = meshGlobalTrans;
-
-    for (unsigned i = 0; i < aimesh->mNumVertices; ++i)
-    {
-        Vertex v;
-        auto&  p = aimesh->mVertices[i];
-
-        // position
-        v.pos = {p.x, p.y, p.z};
-
-        // normal
-        if (aimesh->HasNormals())
-        {
-            auto& n  = aimesh->mNormals[i];
-            v.normal = {n.x, n.y, n.z};
-        }
-
-        // uv
-        if (aimesh->HasTextureCoords(0))
-        {
-            auto& t = aimesh->mTextureCoords[0][i];
-            v.uv    = {t.x, 1.0f - t.y};
-        }
-
-        // vertex color
-        if (aimesh->HasVertexColors(0))
-        {
-            const aiColor4D c = aimesh->mColors[0][i];
-            v.color           = {c.r, c.g, c.b, c.a};
-        }
-
-        // tangent
-        if (aimesh->HasTangentsAndBitangents())
-        {
-            const aiVector3D& t = aimesh->mTangents[i];
-            const aiVector3D& b = aimesh->mBitangents[i];
-
-            glm::vec3 T(t.x, t.y, t.z);
-            glm::vec3 B(b.x, b.y, b.z);
-
-            glm::vec3 N = v.normal;
-            if (!aimesh->HasNormals() || glm::length2(N) < 1e-20f)
-            {
-                N = glm::vec3(0.0f, 0.0f, 1.0f);
-            }
-            else
-            {
-                N = glm::normalize(N);
-            }
-
-            if (glm::length2(T) < 1e-20f)
-            {
-                T = glm::vec3(1.0f, 0.0f, 0.0f);
-            }
-            else
-            {
-                T = glm::normalize(T);
-                T = glm::normalize(T - N * glm::dot(N, T)); // Gram-Schmidt
-            }
-
-            float handedness = 1.0f;
-            if (glm::length2(B) >= 1e-20f)
-            {
-                B          = glm::normalize(B);
-                handedness = (glm::dot(glm::cross(N, T), B) < 0.0f) ? -1.0f : 1.0f;
-            }
-
-            v.tangent = glm::vec4(T, handedness);
-        }
-
-        // aabb
-        ExpandAabb(mesh.aabb, v.pos);
-
-        mesh.vertices.push_back(v);
-    }
-
-    for (unsigned i = 0; i < aimesh->mNumFaces; ++i)
-    {
-        const aiFace& f = aimesh->mFaces[i];
-        if (f.mNumIndices == 3)
-        {
-            mesh.indices.push_back(f.mIndices[0]);
-            mesh.indices.push_back(f.mIndices[1]);
-            mesh.indices.push_back(f.mIndices[2]);
-        }
-    }
-
-    if (aimesh->mMaterialIndex >= 0)
-    {
-        aiMaterial* mat = scene->mMaterials[aimesh->mMaterialIndex];
-
-        // diffuse
-        mesh.material.diffuseColor = GetColorByType(mat, TextureType::Diffuse);
-        {
-            std::string ref = GetTextureRefByType(mat, TextureType::Diffuse);
-            std::string tex = JoinPath(assetDir, ref);
-            LoadTexture(tex, scene, mesh.material.diffuseTexture);
-        }
-
-        // emissive
-        mesh.material.emissiveColor = GetColorByType(mat, TextureType::Emissive);
-        {
-            std::string ref = GetTextureRefByType(mat, TextureType::Emissive);
-            std::string tex = JoinPath(assetDir, ref);
-            LoadTexture(tex, scene, mesh.material.emissiveTexture);
-        }
-
-        // normal
-        {
-            std::string ref = GetTextureRefByType(mat, TextureType::Normal);
-            std::string tex = JoinPath(assetDir, ref);
-            LoadTexture(tex, scene, mesh.material.normalTexture);
-        }
-
-        // orm
-        {
-            std::string ref     = GetTextureRefByType(mat, TextureType::ORM);
-            std::string texPath = JoinPath(assetDir, ref);
-            LoadTexture(texPath, scene, mesh.material.ormTexture);
-        }
-        
-    }
-
-    outMeshWorldAabb = TransformAabb(mesh.aabb, meshGlobalTrans);
-    outMesh          = std::move(mesh);
     return true;
 }
 
@@ -439,4 +278,224 @@ AxisAlignedBox Parser::TransformAabb(const AxisAlignedBox& local,
         ExpandAabb(out, glm::vec3(p));
     }
     return out;
+}
+
+// ------------------------------------------------------------
+// node / mesh parsing
+// ------------------------------------------------------------
+void Parser::ProcessNodeRecursive(const aiScene* scene, const aiNode* ain, const std::string& assetDir,
+                                  const glm::mat4& parentGlobal, Node& outNode) const
+{
+    outNode = Node();
+
+    glm::mat4 local  = GetGlmMatrix(ain->mTransformation);
+    glm::mat4 global = parentGlobal * local;
+    outNode.trans    = local;
+
+    for (unsigned i = 0; i < ain->mNumMeshes; ++i)
+    {
+        const aiMesh* aimesh = scene->mMeshes[ain->mMeshes[i]];
+
+        bool isPointCloud = false;
+        {
+            if (aimesh->mNumFaces == 0)
+            {
+                isPointCloud = true;
+            }
+            if ((aimesh->mPrimitiveTypes & aiPrimitiveType_POINT) != 0 &&
+                (aimesh->mPrimitiveTypes & aiPrimitiveType_TRIANGLE) == 0 &&
+                (aimesh->mPrimitiveTypes & aiPrimitiveType_LINE) == 0)
+            {
+                isPointCloud = true;
+            }
+        }
+
+        if (isPointCloud)
+        {
+            Points         pts;
+            AxisAlignedBox waabb;
+            ParseOnePoints(aimesh, global, pts, waabb);
+            MergeAabb(outNode.aabb, waabb);
+            outNode.points.push_back(std::move(pts));
+        }
+        else
+        {
+            Mesh           m;
+            AxisAlignedBox waabb;
+            ParseOneMesh(scene, aimesh, assetDir, global, m, waabb);
+            MergeAabb(outNode.aabb, waabb);
+            outNode.meshes.push_back(std::move(m));
+        }
+    }
+
+    for (unsigned i = 0; i < ain->mNumChildren; ++i)
+    {
+        Node child;
+        ProcessNodeRecursive(scene, ain->mChildren[i], assetDir, global, child);
+        MergeAabb(outNode.aabb, child.aabb);
+        outNode.children.push_back(std::move(child));
+    }
+}
+
+bool Parser::ParseOneMesh(const aiScene* scene, const aiMesh* aimesh, const std::string& assetDir,
+                          const glm::mat4& meshGlobalTrans, Mesh& outMesh, AxisAlignedBox& outMeshWorldAabb) const
+{
+    Mesh mesh;
+    mesh.trans = meshGlobalTrans;
+
+    for (unsigned i = 0; i < aimesh->mNumVertices; ++i)
+    {
+        Vertex v;
+        auto&  p = aimesh->mVertices[i];
+
+        // position
+        v.pos = {p.x, p.y, p.z};
+
+        // normal
+        if (aimesh->HasNormals())
+        {
+            auto& n  = aimesh->mNormals[i];
+            v.normal = {n.x, n.y, n.z};
+        }
+
+        // uv
+        if (aimesh->HasTextureCoords(0))
+        {
+            auto& t = aimesh->mTextureCoords[0][i];
+            v.uv    = {t.x, 1.0f - t.y};
+        }
+
+        // vertex color
+        if (aimesh->HasVertexColors(0))
+        {
+            const aiColor4D c = aimesh->mColors[0][i];
+            v.color           = {c.r, c.g, c.b, c.a};
+        }
+
+        // tangent
+        if (aimesh->HasTangentsAndBitangents())
+        {
+            const aiVector3D& t = aimesh->mTangents[i];
+            const aiVector3D& b = aimesh->mBitangents[i];
+
+            glm::vec3 T(t.x, t.y, t.z);
+            glm::vec3 B(b.x, b.y, b.z);
+
+            glm::vec3 N = v.normal;
+            if (!aimesh->HasNormals() || glm::length2(N) < 1e-20f)
+            {
+                N = glm::vec3(0.0f, 0.0f, 1.0f);
+            }
+            else
+            {
+                N = glm::normalize(N);
+            }
+
+            if (glm::length2(T) < 1e-20f)
+            {
+                T = glm::vec3(1.0f, 0.0f, 0.0f);
+            }
+            else
+            {
+                T = glm::normalize(T);
+                T = glm::normalize(T - N * glm::dot(N, T)); // Gram-Schmidt
+            }
+
+            float handedness = 1.0f;
+            if (glm::length2(B) >= 1e-20f)
+            {
+                B          = glm::normalize(B);
+                handedness = (glm::dot(glm::cross(N, T), B) < 0.0f) ? -1.0f : 1.0f;
+            }
+
+            v.tangent = glm::vec4(T, handedness);
+        }
+
+        // aabb
+        ExpandAabb(mesh.aabb, v.pos);
+
+        mesh.vertices.push_back(v);
+    }
+
+    for (unsigned i = 0; i < aimesh->mNumFaces; ++i)
+    {
+        const aiFace& f = aimesh->mFaces[i];
+        if (f.mNumIndices == 3)
+        {
+            mesh.indices.push_back(f.mIndices[0]);
+            mesh.indices.push_back(f.mIndices[1]);
+            mesh.indices.push_back(f.mIndices[2]);
+        }
+    }
+
+    if (aimesh->mMaterialIndex >= 0)
+    {
+        aiMaterial* mat = scene->mMaterials[aimesh->mMaterialIndex];
+
+        // diffuse
+        mesh.material.diffuseColor = GetColorByType(mat, TextureType::Diffuse);
+        {
+            std::string ref = GetTextureRefByType(mat, TextureType::Diffuse);
+            std::string tex = JoinPath(assetDir, ref);
+            LoadTexture(tex, scene, mesh.material.diffuseTexture);
+        }
+
+        // emissive
+        mesh.material.emissiveColor = GetColorByType(mat, TextureType::Emissive);
+        {
+            std::string ref = GetTextureRefByType(mat, TextureType::Emissive);
+            std::string tex = JoinPath(assetDir, ref);
+            LoadTexture(tex, scene, mesh.material.emissiveTexture);
+        }
+
+        // normal
+        {
+            std::string ref = GetTextureRefByType(mat, TextureType::Normal);
+            std::string tex = JoinPath(assetDir, ref);
+            LoadTexture(tex, scene, mesh.material.normalTexture);
+        }
+
+        // orm
+        {
+            std::string ref     = GetTextureRefByType(mat, TextureType::ORM);
+            std::string texPath = JoinPath(assetDir, ref);
+            LoadTexture(texPath, scene, mesh.material.ormTexture);
+        }
+    }
+
+    outMeshWorldAabb = TransformAabb(mesh.aabb, meshGlobalTrans);
+    outMesh          = std::move(mesh);
+    return true;
+}
+
+bool Parser::ParseOnePoints(const aiMesh* aimesh, const glm::mat4& pointsGlobalTrans,
+                            Points& outPoints, AxisAlignedBox& outPointsWorldAabb) const
+{
+    Points         pts;
+    AxisAlignedBox localAabb;
+
+    pts.trans = pointsGlobalTrans;
+
+    for (unsigned i = 0; i < aimesh->mNumVertices; ++i)
+    {
+        Point p;
+
+        auto& v = aimesh->mVertices[i];
+        p.pos   = {v.x, v.y, v.z};
+
+        if (aimesh->HasVertexColors(0))
+        {
+            const aiColor4D c = aimesh->mColors[0][i];
+            p.color           = {c.r, c.g, c.b, c.a};
+        }
+
+        ExpandAabb(localAabb, p.pos);
+        pts.points.push_back(p);
+    }
+
+    pts.aabb = localAabb;
+
+    outPointsWorldAabb = TransformAabb(localAabb, pointsGlobalTrans);
+    outPoints          = std::move(pts);
+    return true;
 }

@@ -31,6 +31,11 @@ struct alignas(16) FrameUniforms
     glm::vec4 cameraPos  = glm::vec4(0.0f);
 };
 
+struct alignas(16) PointsUniforms
+{
+    glm::mat4 model        = glm::mat4(1.0f);
+};
+
 struct alignas(16) MeshUniforms
 {
     glm::mat4 model = glm::mat4(1.0f);
@@ -46,10 +51,8 @@ struct alignas(16) PushConstant
 {
     uint64_t frameUniformsAddr = 0;
 
-    int32_t meshUniformsIndex = -1;
-    int32_t _pad0             = 0;
-    int32_t _pad1             = 0;
-    int32_t _pad2             = 0;
+    int64_t meshUniformsIndex   = -1;
+    int64_t pointsUniformsIndex = -1;
 };
 
 struct MappedGpuBuffer
@@ -58,6 +61,13 @@ struct MappedGpuBuffer
     VmaAllocation   allocation    = VK_NULL_HANDLE;
     VkDeviceAddress deviceAddress = 0;
     void*           mapped        = nullptr;
+};
+
+struct PointsGpuBuffer
+{
+    VkBuffer      buffer      = VK_NULL_HANDLE;
+    VmaAllocation allocation  = VK_NULL_HANDLE;
+    Index         vertexCount = 0;
 };
 
 struct MeshGpuBuffer
@@ -98,24 +108,33 @@ class VulkanAdapter
     bool InitVulkanQueue();
     bool InitVmaAllocator();
     bool InitVulkanSwapchain();
-    bool InitVulkanMeshShader();
-    bool InitVulkanLineShader();
     bool InitVulkanSkyboxShader();
+    bool InitVulkanPointShader();
+    bool InitVulkanLineShader();
+    bool InitVulkanMeshShader();
     bool InitVulkanSyncObjects();
     bool InitVulkanCommandPools();
-    bool InitVulkanMeshDescriptorSetLayout();
     bool InitVulkanSkyboxDescriptorSetLayout();
+    bool InitVulkanPointsDescriptorSetLayout();
+    bool InitVulkanMeshDescriptorSetLayout();
+    bool InitVulkanSkyboxPipeline();
+    bool InitVulkanPointPipeline();
     bool InitVulkanLinePipeline();
     bool InitVulkanMeshPipeline();
-    bool InitVulkanSkyboxPipeline();
 
     void PollInputEvents(double elapsed);
 
     bool UpdateSwapchain();
     void UpdateZnZf();
 
-    void CollectMeshes(const Node& node, std::vector<const Mesh*>& out);
     void LoadNode(const Node& node);
+
+    void LoadPoints(const Node& node);
+    void CollectPoints(const Node& node, std::vector<const Points*>& out);
+    bool LoadPoints(const Points& points, std::vector<PointsGpuBuffer>& buffers);
+
+    void LoadMeshes(const Node& node);
+    void CollectMeshes(const Node& node, std::vector<const Mesh*>& out);
     bool LoadMesh(const Mesh& mesh, std::vector<MeshGpuBuffer>& buffers);
     bool LoadTexture(const Texture& tex, std::vector<TextureResource>& textures);
 
@@ -139,15 +158,17 @@ class VulkanAdapter
     using CommandBuffers          = std::array<VkCommandBuffer, maxFramesInFlight>;
     using SlangGlobalSession      = Slang::ComPtr<slang::IGlobalSession>;
 
-    std::vector<MeshGpuBuffer>   meshBuffers;
-    std::vector<TextureResource> meshTextures;
-
     MeshGpuBuffer axisGridBuffer;
 
     MeshGpuBuffer   skyboxBuffer;
     TextureResource skyboxTexture;
 
-    MappedGpuBuffer meshUniformsGpuBuffer;
+    std::vector<PointsGpuBuffer> pointsBuffers;
+    MappedGpuBuffer              pointsUniformsGpuBuffer;
+
+    std::vector<MeshGpuBuffer>   meshBuffers;
+    std::vector<TextureResource> meshTextures;
+    MappedGpuBuffer              meshUniformsGpuBuffer;
 
     glm::vec3 navigation  = glm::vec3(0.0f);
     glm::vec3 camPosition = glm::vec3(0.0f, -10.0f, 10.0f);
@@ -173,6 +194,7 @@ class VulkanAdapter
     VmaAllocation            depthImageAllocation = VK_NULL_HANDLE;
     VkImageView              depthImageView       = VK_NULL_HANDLE;
     FrameUniformsGpuBuffers  frameUniformGpuBuffers;
+    VkShaderModule           pointShader  = VK_NULL_HANDLE;
     VkShaderModule           lineShader   = VK_NULL_HANDLE;
     VkShaderModule           meshShader   = VK_NULL_HANDLE;
     VkShaderModule           skyboxShader = VK_NULL_HANDLE;
@@ -182,20 +204,25 @@ class VulkanAdapter
     RenderingSemaphores      renderSemaphores;
     VkCommandPool            commandPool = VK_NULL_HANDLE;
     CommandBuffers           commandBuffers;
+    VkDescriptorSetLayout    descriptorSetLayoutSky = VK_NULL_HANDLE;
+    VkDescriptorPool         descriptorPoolSky      = VK_NULL_HANDLE;
+    VkDescriptorSet          descriptorSetSky       = VK_NULL_HANDLE;
+    VkDescriptorSetLayout    descriptorSetLayoutPts = VK_NULL_HANDLE;
+    VkDescriptorPool         descriptorPoolPts      = VK_NULL_HANDLE;
+    VkDescriptorSet          descriptorSetPts       = VK_NULL_HANDLE;
     VkDescriptorSetLayout    descriptorSetLayoutTex = VK_NULL_HANDLE;
     VkDescriptorPool         descriptorPoolTex      = VK_NULL_HANDLE;
     VkDescriptorSet          descriptorSetTex       = VK_NULL_HANDLE;
     VkDescriptorSetLayout    descriptorSetLayoutMat = VK_NULL_HANDLE;
     VkDescriptorPool         descriptorPoolMat      = VK_NULL_HANDLE;
     VkDescriptorSet          descriptorSetMat       = VK_NULL_HANDLE;
+    VkPipelineLayout         skyboxPipelineLayout   = VK_NULL_HANDLE;
+    VkPipeline               skyboxPipeline         = VK_NULL_HANDLE;
+    VkPipelineLayout         pointPipelineLayout    = VK_NULL_HANDLE;
+    VkPipeline               pointPipeline          = VK_NULL_HANDLE;
     VkPipelineLayout         linePipelineLayout     = VK_NULL_HANDLE;
     VkPipeline               linePipeline           = VK_NULL_HANDLE;
     VkPipelineLayout         meshPipelineLayout     = VK_NULL_HANDLE;
     VkPipeline               meshPipeline           = VK_NULL_HANDLE;
-    VkDescriptorSetLayout    descriptorSetLayoutSky = VK_NULL_HANDLE;
-    VkDescriptorPool         descriptorPoolSky      = VK_NULL_HANDLE;
-    VkDescriptorSet          descriptorSetSky       = VK_NULL_HANDLE;
-    VkPipelineLayout         skyboxPipelineLayout   = VK_NULL_HANDLE;
-    VkPipeline               skyboxPipeline         = VK_NULL_HANDLE;
     //////////////////////////////////////////////////////////////////////////
 };

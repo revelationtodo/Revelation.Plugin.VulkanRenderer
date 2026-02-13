@@ -33,9 +33,8 @@ struct MeshUniforms
 struct PushConstants
 {
     uint64_t frameUniformsAddr;
-    int      meshIndex;
-    int      _pad0;
-    int      _pad1;
+    int64_t  meshUniformsIndex;
+    int64_t  pointsUniformsIndex;
 };
 
 struct VSOutput
@@ -49,7 +48,7 @@ struct VSOutput
     float  tangentW   : TEXCOORD4; // NEW (handedness)
 
     float4 color      : TEXCOORD5;
-    int    meshIndex  : TEXCOORD6;
+    int    meshUniformsIndex  : TEXCOORD6;
 };
 
 [[vk::binding(0, 0)]]
@@ -75,7 +74,7 @@ VSOutput main(VSInput input, uint instanceIndex : SV_VulkanInstanceID)
     VSOutput o;
 
     FrameUniforms* frame = (FrameUniforms*)gPC.frameUniformsAddr;
-    MeshUniforms meshU = gMeshUniforms[gPC.meshIndex];
+    MeshUniforms meshU = gMeshUniforms[gPC.meshUniformsIndex];
 
     float4x4 M = meshU.model;
     float4x4 V = frame->view;
@@ -104,7 +103,7 @@ VSOutput main(VSInput input, uint instanceIndex : SV_VulkanInstanceID)
     o.tangentWS = T;
     o.tangentW  = input.tangent.w;
 
-    o.meshIndex = gPC.meshIndex;
+    o.meshUniformsIndex = gPC.meshUniformsIndex;
     return o;
 }
 
@@ -117,7 +116,7 @@ float3 decodeNormalTS(float3 n)
 [shader("fragment")]
 float4 main(VSOutput input) : SV_Target
 {
-    MeshUniforms mesh = gMeshUniforms[input.meshIndex];
+    MeshUniforms mesh = gMeshUniforms[input.meshUniformsIndex];
 
     // -------------------------
     // Diffuse (albedo)

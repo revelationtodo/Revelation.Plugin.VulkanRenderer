@@ -7,7 +7,7 @@
 #include <glm/glm.hpp>
 #include <assimp/scene.h>
 
-struct Line
+struct Point
 {
     glm::vec3 pos   = glm::vec3(0.0f);
     glm::vec4 color = glm::vec4(1.0f);
@@ -67,6 +67,15 @@ struct Material
     Texture ormTexture;
 };
 
+struct Points
+{
+    std::vector<Point> points;
+
+    AxisAlignedBox     aabb;
+
+    glm::mat4 trans = glm::mat4(1.0f);
+};
+
 struct Mesh
 {
     std::vector<Vertex> vertices;
@@ -80,8 +89,9 @@ struct Mesh
 
 struct Node
 {
-    std::vector<Node> children;
-    std::vector<Mesh> meshes;
+    std::vector<Node>   children;
+    std::vector<Mesh>   meshes;
+    std::vector<Points> points;
 
     AxisAlignedBox aabb;
     glm::mat4      trans = glm::mat4(1.0f);
@@ -113,6 +123,10 @@ class Parser
     // -------- parsing --------
     void ProcessNodeRecursive(const aiScene* scene, const aiNode* ain, const std::string& assetDir,
                               const glm::mat4& parentGlobal, Node& outNode) const;
+
     bool ParseOneMesh(const aiScene* scene, const aiMesh* aimesh, const std::string& assetDir,
                       const glm::mat4& meshGlobalTrans, Mesh& outMesh, AxisAlignedBox& outMeshWorldAabb) const;
+
+    bool ParseOnePoints(const aiMesh* aimesh, const glm::mat4& pointsGlobalTrans,
+                        Points& outPoints, AxisAlignedBox& outPointsWorldAabb) const;
 };
