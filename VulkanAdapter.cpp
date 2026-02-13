@@ -340,6 +340,24 @@ void VulkanAdapter::Tick(double elapsed)
     }
     // --- draw skybox end ---
 
+    // --- draw points begin ---
+    if (pointPipeline != VK_NULL_HANDLE && descriptorSetPts != VK_NULL_HANDLE && !pointsBuffers.empty())
+    {
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pointPipeline);
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pointPipelineLayout, 0, 1, &descriptorSetPts, 0, nullptr);
+        for (int i = 0; i < pointsBuffers.size(); ++i)
+        {
+            const PointsGpuBuffer& pointsBuffer = pointsBuffers[i];
+            pushConstant.pointsUniformsIndex    = i;
+            vkCmdPushConstants(commandBuffer, pointPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstant), &pushConstant);
+            VkDeviceSize vOffset = 0;
+            vkCmdBindVertexBuffers(commandBuffer, 0, 1, &pointsBuffer.buffer, &vOffset);
+            vkCmdDraw(commandBuffer, pointsBuffer.vertexCount, 1, 0, 0);
+        }
+        pushConstant.pointsUniformsIndex = -1;
+    }
+    // --- draw points end ---
+
     // --- draw mesh begin ---
     if (meshPipeline != VK_NULL_HANDLE && descriptorSetTex != VK_NULL_HANDLE && !meshBuffers.empty())
     {
@@ -370,24 +388,6 @@ void VulkanAdapter::Tick(double elapsed)
         vkCmdDraw(commandBuffer, axisGridBuffer.indexCount, 1, 0, 0);
     }
     // --- draw axis and grid end ---
-
-    // --- draw points begin ---
-    if (pointPipeline != VK_NULL_HANDLE && descriptorSetPts != VK_NULL_HANDLE && !pointsBuffers.empty())
-    {
-        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pointPipeline);
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pointPipelineLayout, 0, 1, &descriptorSetPts, 0, nullptr);
-        for (int i = 0; i < pointsBuffers.size(); ++i)
-        {
-            const PointsGpuBuffer& pointsBuffer = pointsBuffers[i];
-            pushConstant.pointsUniformsIndex    = i;
-            vkCmdPushConstants(commandBuffer, pointPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstant), &pushConstant);
-            VkDeviceSize vOffset = 0;
-            vkCmdBindVertexBuffers(commandBuffer, 0, 1, &pointsBuffer.buffer, &vOffset);
-            vkCmdDraw(commandBuffer, pointsBuffer.vertexCount, 1, 0, 0);
-        }
-        pushConstant.pointsUniformsIndex = -1;
-    }
-    // --- draw points end ---
 
     vkCmdEndRendering(commandBuffer);
 
@@ -1345,7 +1345,7 @@ bool VulkanAdapter::InitVulkanPointPipeline()
     VkPipelineDepthStencilStateCreateInfo depthStencilStateCI{
         .sType            = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
         .depthTestEnable  = VK_TRUE,
-        .depthWriteEnable = VK_FALSE,
+        .depthWriteEnable = VK_TRUE,
         .depthCompareOp   = VK_COMPARE_OP_LESS_OR_EQUAL};
 
     VkPipelineColorBlendAttachmentState blendAttachment{
